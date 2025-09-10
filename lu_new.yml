@@ -12,11 +12,11 @@
 
     - name: Change script permission
       file:
-        path: /users.sh
+        path: /add_users.sh
         owner: semaphore
         group: semaphore
         mode: a+x
         
     - name: Execute the script
       ansible.builtin.shell:
-        cmd: ./users.sh users.csv
+        cmd: ./add_users.sh users.csv
