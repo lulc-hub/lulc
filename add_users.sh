@@ -45,28 +45,3 @@ rm -f /etc/lab.d/users.tar.gz
 cd /etc/
 tar --same-owner -zpcf lab.d/users.tar.gz passwd shadow group gshadow
 cd "$OLDPWD"
-
-# Rsync home folders to each machine (LAB3)
-for i in {01..40}; do
-  MACHINE='LAB3-'$i
-  rsync -aq /etc/lab.d/users.tar.gz "${MACHINE}:/etc/lab.d/users.tar.gz"
-  ssh "$MACHINE" "tar --same-owner -xpf /etc/lab.d/users.tar.gz -C /etc/"
-  rsync --mkpath -avzr /home/"${groupname}" "${MACHINE}:/home/"
-  echo "$i"
-done
-
-# Rsync home folders to each machine (LAB1)
-for i in {01..20}; do
-  MACHINE='LAB1-'$i
-  rsync -aq /etc/lab.d/users.tar.gz "${MACHINE}:/etc/lab.d/users.tar.gz"
-  ssh "$MACHINE" "tar --same-owner -xpf /etc/lab.d/users.tar.gz -C /etc/"
-  rsync --mkpath -avzr /home/"${groupname}" "${MACHINE}:/home/"
-  echo "$i"
-done
-
-# Rsync to LAB1-ADMIN
-MACHINE='LAB1-ADMIN'
-rsync -aq /etc/lab.d/users.tar.gz "${MACHINE}:/etc/lab.d/users.tar.gz"
-ssh "$MACHINE" "tar --same-owner -xpf /etc/lab.d/users.tar.gz -C /etc/"
-rsync --mkpath -avzr /home/"${groupname}" "${MACHINE}:/home/"
-echo "$i"
