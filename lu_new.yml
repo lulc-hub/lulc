@@ -5,7 +5,7 @@
   become: true
 
   vars:
-    base_dir: /tmp/semaphore/project_1/repository_3_template_8
+    base_dir: /tmp/semaphore/project_1/repository_1_template_2
     script_path: "{{ base_dir }}/allusers.sh"
     csv_path: "{{ base_dir }}/newusers.csv"
 
@@ -20,33 +20,38 @@
         path: "{{ csv_path }}"
       register: csv_stat
 
-    - name: Make allusers.sh executable
-      ansible.builtin.file:
-        path: "{{ script_path }}"
-        mode: "0755"
-      when:
-        - script_stat.stat.exists
-        - script_stat.stat.isreg
+    - name: Proceed only if both files exist
+      block:
+        - name: Make allusers.sh executable
+          ansible.builtin.file:
+            path: "{{ script_path }}"
+            mode: "0755"
 
-    - name: Execute allusers.sh with newusers.csv
-      ansible.builtin.shell: |
-        ./allusers.sh newusers.csv
-      args:
-        chdir: "{{ base_dir }}"
+        - name: Execute allusers.sh with newusers.csv
+          ansible.builtin.command:
+            cmd: "{{ script_path }} {{ csv_path }}"
+          register: run_out
+          changed_when: true
+
+        - name: Show script stdout (if any)
+          ansible.builtin.debug:
+            msg: "{{ (run_out.stdout | default('')) | trim }}"
+          when: (run_out.stdout | default('')) | trim != ''
+
+        - name: Show script stderr (if any)
+          ansible.builtin.debug:
+            msg: "{{ (run_out.stderr | default('')) | trim }}"
+          when: (run_out.stderr | default('')) | trim != ''
       when:
         - script_stat.stat.exists
         - script_stat.stat.isreg
         - csv_stat.stat.exists
         - csv_stat.stat.isreg
-      register: run_out
-      changed_when: true
 
-    - name: Show script output (stdout)
+    - name: Skip message if files missing
       ansible.builtin.debug:
-        var: run_out.stdout
-      when: run_out is defined and run_out.stdout != ""
-
-    - name: Show script errors (stderr)
-      ansible.builtin.debug:
-        var: run_out.stderr
-      when: run_out is defined and run_out.stderr != ""
+        msg: >
+          Skipping: required files not found.
+          allusers.sh exists={{ script_stat.stat.exists | default(false) }},
+          newusers.csv exists={{ csv_stat.stat.exists | default(false) }}
+      when: not (script_stat.stat.exists and csv_stat.stat.exists)
