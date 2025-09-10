@@ -10,9 +10,24 @@
       debug:
        msg: "The current working directory is: {{ current_working_directory.stdout }}"
 
+    - name: Checking if file exists
+      stat:
+        path: "/tmp/semaphore/project_1/repository_3_template_8/add_users.sh"
+      register: file_exists
+
+    - name: Report if file exists
+      debug:
+        msg: "The file or directory exists"
+      when: file_exists.stat.exists
+
+      - name: Report file is missing
+      debug:
+        msg: "The file or directory does not exists"
+      when: not file_exists.stat.exists  
+
     - name: Change script permission
       file:
-        path: /add_users.sh
+        path: add_users.sh
         owner: semaphore
         group: semaphore
         mode: a+x
