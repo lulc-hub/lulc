@@ -20,7 +20,7 @@
         msg: "The file or directory exists"
       when: file_exists.stat.exists
 
-      - name: Report file is missing
+    - name: Report file is missing
       debug:
         msg: "The file or directory does not exists"
       when: not file_exists.stat.exists  
