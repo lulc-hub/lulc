@@ -1,37 +1,52 @@
 ---
-- hosts: test
+- name: Run allusers.sh if present
+  hosts: test
+  gather_facts: false
   become: true
+
+  vars:
+    base_dir: /tmp/semaphore/project_1/repository_3_template_8
+    script_path: "{{ base_dir }}/allusers.sh"
+    csv_path: "{{ base_dir }}/newusers.csv"
+
   tasks:
-    - name: Get current working directory
-      ansible.builtin.shell: pwd
-      register: current_working_directory
+    - name: Check if allusers.sh exists
+      ansible.builtin.stat:
+        path: "{{ script_path }}"
+      register: script_stat
 
-    - name: Display current working directory
-      debug:
-       msg: "The current working directory is: {{ current_working_directory.stdout }}"
+    - name: Check if newusers.csv exists
+      ansible.builtin.stat:
+        path: "{{ csv_path }}"
+      register: csv_stat
 
-    - name: Checking if file exists
-      stat:
-        path: "/tmp/semaphore/project_1/repository_3_template_8/add_users.sh"
-      register: file_exists
+    - name: Make allusers.sh executable
+      ansible.builtin.file:
+        path: "{{ script_path }}"
+        mode: "0755"
+      when:
+        - script_stat.stat.exists
+        - script_stat.stat.isreg
 
-    - name: Report if file exists
-      debug:
-        msg: "The file or directory exists"
-      when: file_exists.stat.exists
+    - name: Execute allusers.sh with newusers.csv
+      ansible.builtin.shell: |
+        ./allusers.sh newusers.csv
+      args:
+        chdir: "{{ base_dir }}"
+      when:
+        - script_stat.stat.exists
+        - script_stat.stat.isreg
+        - csv_stat.stat.exists
+        - csv_stat.stat.isreg
+      register: run_out
+      changed_when: true
 
-    - name: Report file is missing
-      debug:
-        msg: "The file or directory does not exists"
-      when: not file_exists.stat.exists  
+    - name: Show script output (stdout)
+      ansible.builtin.debug:
+        var: run_out.stdout
+      when: run_out is defined and run_out.stdout != ""
 
-    - name: Change script permission
-      file:
-        path: add_users.sh
-        owner: semaphore
-        group: semaphore
-        mode: a+x
-        
-    - name: Execute the script
-      ansible.builtin.shell:
-        cmd: ./add_users.sh users.csv
+    - name: Show script errors (stderr)
+      ansible.builtin.debug:
+        var: run_out.stderr
+      when: run_out is defined and run_out.stderr != ""
