@@ -1,57 +1,46 @@
 ---
-- name: Run allusers.sh if present
+- name: Copy and run allusers.sh with CSV
   hosts: test
   gather_facts: false
   become: true
 
   vars:
-    base_dir: .
-    script_path: "{{ base_dir }}/allusers.sh"
-    csv_path: "{{ base_dir }}/newusers.csv"
+    dest_dir: "/tmp/allusers_task"
 
   tasks:
-    - name: Check if allusers.sh exists
-      ansible.builtin.stat:
-        path: "{{ script_path }}"
-      register: script_stat
+    - name: Ensure destination directory exists
+      ansible.builtin.file:
+        path: "{{ dest_dir }}"
+        state: directory
+        mode: "0755"
 
-    - name: Check if newusers.csv exists
-      ansible.builtin.stat:
-        path: "{{ csv_path }}"
-      register: csv_stat
+    - name: Copy allusers.sh to remote
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/allusers.sh"
+        dest: "{{ dest_dir }}/allusers.sh"
+        mode: "0755"
 
-    - name: Proceed only if both files exist
-      block:
-        - name: Make allusers.sh executable
-          ansible.builtin.file:
-            path: "{{ script_path }}"
-            mode: "0755"
+    - name: Copy newusers.csv to remote
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/newusers.csv"
+        dest: "{{ dest_dir }}/newusers.csv"
+        mode: "0644"
 
-        - name: Execute allusers.sh with newusers.csv
-          ansible.builtin.command:
-            cmd: "{{ script_path }} {{ csv_path }}"
-          register: run_out
-          changed_when: true
+    - name: Execute allusers.sh with newusers.csv
+      ansible.builtin.command:
+        cmd: "./allusers.sh ./newusers.csv"
+        chdir: "{{ dest_dir }}"
+      register: run_out
+      changed_when: true
+      # If you want the task to fail when the script returns non-zero:
+      # failed_when: run_out.rc != 0
 
-        - name: Show script stdout (if any)
-          ansible.builtin.debug:
-            msg: "{{ (run_out.stdout | default('')) | trim }}"
-          when: (run_out.stdout | default('')) | trim != ''
-
-        - name: Show script stderr (if any)
-          ansible.builtin.debug:
-            msg: "{{ (run_out.stderr | default('')) | trim }}"
-          when: (run_out.stderr | default('')) | trim != ''
-      when:
-        - script_stat.stat.exists
-        - script_stat.stat.isreg
-        - csv_stat.stat.exists
-        - csv_stat.stat.isreg
-
-    - name: Skip message if files missing
+    - name: Show script stdout (if any)
       ansible.builtin.debug:
-        msg: >
-          Skipping: required files not found.
-          allusers.sh exists={{ script_stat.stat.exists | default(false) }},
-          newusers.csv exists={{ csv_stat.stat.exists | default(false) }}
-      when: not (script_stat.stat.exists and csv_stat.stat.exists)
+        msg: "{{ (run_out.stdout | default('')) | trim }}"
+      when: (run_out.stdout | default('')) | trim != ''
+
+    - name: Show script stderr (if any)
+      ansible.builtin.debug:
+        msg: "{{ (run_out.stderr | default('')) | trim }}"
+      when: (run_out.stderr | default('')) | trim != ''
