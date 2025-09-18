@@ -1,47 +1,59 @@
-#!/bin/bash -xe
-# Script to set up user accounts and groups on admin machine
-# Assumes no accounts/groups have been set up beyond the default when creating the box
-# Expects a CSV file with one username per line as the first argument
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Check if a file was provided
-if [ -z "$1" ]; then
-  echo "Error: Please provide a CSV file with usernames"
-  echo "Usage: $0 users.csv"
-  exit 1
+csv_file="${1:-}"
+groupname="students"
+
+if [[ -z "${csv_file}" || ! -r "${csv_file}" ]]; then
+  echo "Usage: $0 <path-to-newusers.csv>" >&2
+  exit 2
 fi
 
-# Check if the file exists and is readable
-if [ ! -r "$1" ]; then
-  echo "Error: File '$1' does not exist or is not readable"
-  exit 1
+# Ensure group exists (idempotent)
+if ! getent group "${groupname}" >/dev/null; then
+  groupadd "${groupname}"
 fi
 
-groupname='students'
-csv_file="$1"
-
-# Ensure the 'students' group exists
-if ! getent group "$groupname" > /dev/null; then
-  groupadd "$groupname"
+# Pick a user creation command for this distro
+if command -v useradd >/dev/null 2>&1; then
+  CREATOR="useradd"
+  # useradd flags: create home, primary group, comment (full name)
+  create_user() { useradd -m -g "${groupname}" -c "$2" "$1"; }
+elif command -v adduser >/dev/null 2>&1; then
+  CREATOR="adduser"
+  # adduser flags (Debian/Ubuntu)
+  create_user() { adduser --disabled-password --ingroup "${groupname}" --gecos "$2" "$1"; }
+else
+  echo "No user creation command found (useradd/adduser)." >&2
+  exit 3
 fi
 
-# Read usernames from CSV file and create users
-while IFS= read -r username; do
-  # Skip empty lines
-  [ -z "$username" ] && continue
+# Normalize input: strip BOM, remove CR, then read CSV
+line_no=0
+sed '1s/^\xEF\xBB\xBF//' "${csv_file}" | tr -d '\r' | \
+while IFS=, read -r username full_name _rest; do
+  ((line_no++))
 
-  # Create user
-  adduser --gecos '' --disabled-password --ingroup "$groupname" "$username"
-  echo "Created user: $username"
+  # Skip blanks and header
+  [[ -z "${username// }" ]] && continue
+  [[ "${username,,}" == "username" ]] && continue
 
-  # Set password to match username
-  echo "${username}:${username}" | chpasswd
+  # Normalize fields
+  username="$(echo "$username" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  full_name="$(echo "${full_name:-}" | sed 's/^ *//;s/ *$//')"
 
-  # Force user to set password on next login
-  chage -d 0 "$username"
-done < "$csv_file"
+  # Validate username (POSIX-ish)
+  if [[ ! "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    echo "Skipping line ${line_no}: invalid username '$username'" >&2
+    continue
+  fi
 
-# Create archive of user-related files
-rm -f /etc/lab.d/users.tar.gz
-cd /etc/
-tar --same-owner -zpcf lab.d/users.tar.gz passwd shadow group gshadow
-cd "$OLDPWD"
+  if id -u "$username" >/dev/null 2>&1; then
+    echo "User '$username' already exists; ensuring group membership…"
+    usermod -aG "${groupname}" "$username" || true
+    continue
+  fi
+
+  create_user "$username" "${full_name}"
+  echo "Created user: $username (${full_name})"
+done
