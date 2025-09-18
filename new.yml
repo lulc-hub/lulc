@@ -1,0 +1,51 @@
+- name: Normalize line endings for script and CSV (idempotent)
+  ansible.builtin.shell: |
+    sed -i '1s/^\xEF\xBB\xBF//' ./allusers.sh || true
+    sed -i '1s/^\xEF\xBB\xBF//' ./newusers.csv || true
+    sed -i 's/\r$//' ./allusers.sh || true
+    sed -i 's/\r$//' ./newusers.csv || true
+  args:
+    chdir: "{{ base_dir }}"
+
+- name: Sanity checks (show file type, size, shebang)
+  ansible.builtin.shell: |
+    set -e
+    echo "bash path: $(command -v bash || true)"
+    echo "script head:"
+    head -n 3 ./allusers.sh | sed -n '1,3p'
+    echo "file info:"
+    wc -c ./allusers.sh ./newusers.csv
+  args:
+    chdir: "{{ base_dir }}"
+  register: precheck
+  changed_when: false
+
+- name: Show precheck output
+  ansible.builtin.debug:
+    var: precheck.stdout_lines
+
+# >>> Use bash explicitly and trace
+- name: Run allusers.sh with bash -x to capture where it fails
+  ansible.builtin.shell: |
+    set -o pipefail
+    bash -x ./allusers.sh ./newusers.csv
+  args:
+    chdir: "{{ base_dir }}"
+  register: traced
+  changed_when: true
+  failed_when: false  # let us see output even if it fails
+
+- name: Show traced stdout
+  ansible.builtin.debug:
+    msg: "{{ (traced.stdout | default('')) | trim }}"
+  when: (traced.stdout | default('')) | trim != ''
+
+- name: Show traced stderr
+  ansible.builtin.debug:
+    msg: "{{ (traced.stderr | default('')) | trim }}"
+  when: (traced.stderr | default('')) | trim != ''
+
+- name: Fail the play if the traced run failed
+  ansible.builtin.fail:
+    msg: "Script failed with rc={{ traced.rc }}. See debug output above."
+  when: traced.rc != 0
