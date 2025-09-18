@@ -5,7 +5,7 @@
   become: true
 
   vars:
-    base_dir: /tmp/semaphore/project_1/repository_1_template_2
+    base_dir: .
     script_path: "{{ base_dir }}/allusers.sh"
     csv_path: "{{ base_dir }}/newusers.csv"
 
