@@ -1,6 +1,6 @@
 ---
 - name: Copy and run allusers.sh with CSV
-  hosts: test
+  hosts: lu_lab
   gather_facts: false
   become: true
 
