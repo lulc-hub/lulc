@@ -1,0 +1,84 @@
+---
+- name: Ensure user exists, group is present, and copy known_hosts
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    # Override these via -e or group_vars/host_vars if you like
+    user_username: "teststudent"
+    user_full_name: "Test Student"
+    admin_group: "students"
+
+    # Path on the CONTROL NODE to the known_hosts file you want to distribute
+    # You can pass -e "known_hosts_src=~/.ssh/known_hosts" when running
+    known_hosts_src: "~/.ssh/known_hosts"
+
+    # Destination on the REMOTE machines (system-wide)
+    known_hosts_dst_system: "/etc/ssh/ssh_known_hosts"
+
+    # Optional: also place a copy in the user's home (commented tasks below)
+    known_hosts_dst_user: ".ssh/known_hosts"
+
+  pre_tasks:
+    - name: Check that the source known_hosts exists on the control node
+      delegate_to: localhost
+      run_once: true
+      stat:
+        path: "{{ known_hosts_src | expanduser }}"
+      register: known_hosts_src_stat
+
+    - name: Fail early if known_hosts source is missing
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: >-
+          The known_hosts source file {{ known_hosts_src | expanduser }} was not found
+          on the control node. Provide it via -e known_hosts_src=... or create it.
+      when: not known_hosts_src_stat.stat.exists
+
+  tasks:
+    - name: Ensure admin group exists (create if missing)
+      group:
+        name: "{{ admin_group }}"
+        state: present
+
+    - name: Ensure user exists with full name and is in admin group
+      user:
+        name: "{{ user_username }}"
+        comment: "{{ user_full_name }}"
+        groups: "{{ admin_group }}"
+        append: true
+        create_home: true
+        state: present
+
+    - name: Ensure system-wide SSH directory exists
+      file:
+        path: "{{ known_hosts_dst_system | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy known_hosts to system-wide location on remote
+      copy:
+        src: "{{ known_hosts_src | expanduser }}"
+        dest: "{{ known_hosts_dst_system }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    # -------- Optional per-user copy (uncomment if you want user-local known_hosts) --------
+    # - name: Ensure user's .ssh directory exists
+    #   file:
+    #     path: "/home/{{ user_username }}/.ssh"
+    #     state: directory
+    #     owner: "{{ user_username }}"
+    #     group: "{{ user_username }}"
+    #     mode: "0700"
+    #
+    # - name: Copy known_hosts to user's home
+    #   copy:
+    #     src: "{{ known_hosts_src | expanduser }}"
+    #     dest: "/home/{{ user_username }}/{{ known_hosts_dst_user }}"
+    #     owner: "{{ user_username }}"
+    #     group: "{{ user_username }}"
+    #     mode: "0644"
