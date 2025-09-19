@@ -1,0 +1,126 @@
+---
+- name: Create multiple users from CSV and copy known_hosts
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    # Override via -e "csv_path=/path/to/newusers.csv"
+    csv_path: "./newusers.csv"
+
+    admin_group: "stu-admin"
+
+    # Path on the CONTROL NODE to the known_hosts you want to distribute
+    known_hosts_src: "~/.ssh/known_hosts"
+
+    # Destination on the REMOTE machines (system-wide)
+    known_hosts_dst_system: "/etc/ssh/ssh_known_hosts"
+
+    # Optional per-user known_hosts (commented tasks below)
+    user_known_hosts_relpath: ".ssh/known_hosts"
+
+  pre_tasks:
+    - name: Check the CSV exists on the control node
+      delegate_to: localhost
+      run_once: true
+      stat:
+        path: "{{ csv_path | expanduser }}"
+      register: csv_stat
+
+    - name: Fail if CSV not found
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: "CSV not found at {{ csv_path | expanduser }} on the control node."
+      when: not csv_stat.stat.exists
+
+    - name: Read users from CSV (requires community.general)
+      delegate_to: localhost
+      run_once: true
+      community.general.read_csv:
+        path: "{{ csv_path | expanduser }}"
+      register: users_csv
+
+    - name: Ensure known_hosts source exists on the control node
+      delegate_to: localhost
+      run_once: true
+      stat:
+        path: "{{ known_hosts_src | expanduser }}"
+      register: known_hosts_src_stat
+
+    - name: Fail if known_hosts source is missing
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: "known_hosts source {{ known_hosts_src | expanduser }} not found on the control node."
+      when: not known_hosts_src_stat.stat.exists
+
+  tasks:
+    - name: Ensure admin group exists
+      group:
+        name: "{{ admin_group }}"
+        state: present
+
+    - name: Create each user with full name and add to stu-admin
+      vars:
+        u: "{{ item }}"
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.username }}"
+      user:
+        name: "{{ u.username }}"
+        comment: "{{ u.full_name | default('') }}"
+        groups: "{{ admin_group }}"
+        append: true
+        create_home: true
+        state: present
+      when:
+        - u.username is defined
+        - u.username | length > 0
+
+    - name: Ensure system-wide SSH directory exists
+      file:
+        path: "{{ known_hosts_dst_system | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy known_hosts to system-wide location on each remote
+      copy:
+        src: "{{ known_hosts_src | expanduser }}"
+        dest: "{{ known_hosts_dst_system }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    # ------- Optional: also copy to each user's home (uncomment if desired) -------
+    # - name: Ensure per-user .ssh directory exists
+    #   vars:
+    #     u: "{{ item }}"
+    #   loop: "{{ users_csv.list }}"
+    #   loop_control:
+    #     label: "{{ u.username }}"
+    #   file:
+    #     path: "/home/{{ u.username }}/.ssh"
+    #     state: directory
+    #     owner: "{{ u.username }}"
+    #     group: "{{ u.username }}"
+    #     mode: "0700"
+    #   when:
+    #     - u.username is defined
+    #     - u.username | length > 0
+    #
+    # - name: Copy known_hosts into each user's home
+    #   vars:
+    #     u: "{{ item }}"
+    #   loop: "{{ users_csv.list }}"
+    #   loop_control:
+    #     label: "{{ u.username }}"
+    #   copy:
+    #     src: "{{ known_hosts_src | expanduser }}"
+    #     dest: "/home/{{ u.username }}/{{ user_known_hosts_relpath }}"
+    #     owner: "{{ u.username }}"
+    #     group: "{{ u.username }}"
+    #     mode: "0644"
+    #   when:
+    #     - u.username is defined
+    #     - u.username | length > 0
