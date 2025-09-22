@@ -2,7 +2,10 @@
 - name: Ensure user exists, group is present, and copy known_hosts
   hosts: lu_test
   become: true
-  gather_facts: false
+  gather_facts: true
+  become_user: root
+  become_method: sudo
+  remote_user: semaphore
 
   vars:
     # Override these via -e or group_vars/host_vars if you like
