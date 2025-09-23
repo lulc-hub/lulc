@@ -1,6 +1,6 @@
 ---
 - hosts: test_client
-  become: false  # Disable privilege escalation
+  become: true  # Disable privilege escalation
   tasks:
     - name: Check current user
       ansible.builtin.command: whoami
