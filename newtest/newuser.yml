@@ -3,7 +3,7 @@
   hosts: lu_test
   become: yes
   gather_facts: true
-  #remote_user: semaphore
+  remote_user: semaphore
 
   vars:
     # Override these via -e or group_vars/host_vars if you like
