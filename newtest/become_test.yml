@@ -1,17 +1,20 @@
 ---
 - hosts: test_client
-  become: yes  # Disable privilege escalation
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: false  # Temporarily disable to avoid permission issues
+  
   tasks:
-    - name: Check current user
-      ansible.builtin.command: whoami
-      register: current_user
+    - name: Check sudo access
+      command: whoami
+      register: whoami_result
       
     - name: Display current user
-      ansible.builtin.debug:
-        var: current_user.stdout
+      debug:
+        var: whoami_result.stdout
         
-    - name: Install apache2 (skip if no sudo)
-      ansible.builtin.package:
+    - name: Install apache2
+      package:
         name: apache2
-        state: absent
-      ignore_errors: true
+        state: present
