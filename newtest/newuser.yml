@@ -1,8 +1,18 @@
 ---
-- name: Ensure user exists, group is present, and copy known_hosts
-  hosts: test_client
+- hosts: test_client
   become: yes
-  gather_facts: true
+  become_method: sudo
+  become_user: root
+  gather_facts: false  # Temporarily disable to avoid permission issues
+  
+  tasks:
+    - name: Check sudo access
+      command: whoami
+      register: whoami_result
+      
+    - name: Display current user
+      debug:
+        var: whoami_result.stdout
 
   vars:
     # Override these via -e or group_vars/host_vars if you like
