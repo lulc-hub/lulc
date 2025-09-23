@@ -1,7 +1,7 @@
 ---
 - name: Ensure user exists, group is present, and copy known_hosts
   hosts: lu_test
-  become: true
+  #become: true
   gather_facts: true
   #remote_user: semaphore
 
