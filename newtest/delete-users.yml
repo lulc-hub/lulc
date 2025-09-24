@@ -24,7 +24,7 @@
       register: user_exists
       ignore_errors: yes
       loop: "{{ users_to_delete }}"
-      
+
     - name: Display users that will be deleted
       debug:
         msg: "User '{{ item.item }}' exists and will be deleted"
@@ -42,12 +42,12 @@
         name: "{{ item.item }}"
         state: absent
         remove: "{{ remove_home_dirs }}"
-        force: "{{ remove_home_dirs }}"  # Force removal if processes are running
+        force: "{{ remove_home_dirs }}"
       loop: "{{ user_exists.results }}"
       when: item.rc == 0
 
-    - name: Kill any processes owned by deleted users (if home dir removal fails)
-      shell: "pkill -u {{ item.item }} || true"
+    - name: Kill any processes owned by deleted users
+      shell: "pkill -u {{ item }} || true"
       loop: "{{ users_to_delete }}"
       ignore_errors: yes
       changed_when: false
