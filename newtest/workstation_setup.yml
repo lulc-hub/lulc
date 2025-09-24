@@ -1,0 +1,94 @@
+---
+- name: Workstation setup (TeamViewer, SSH, dev tools)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    teamviewer_deb_url: "https://download.teamviewer.com/download/linux/teamviewer_amd64.deb"
+    teamviewer_deb_path: "/tmp/teamviewer_amd64.deb"
+
+    # Packages taken directly from your script
+    base_packages:
+      - openssh-server
+      - gcc
+      - gnat
+      - git
+      - default-jre
+      - default-jdk
+      - erlang
+      - nodejs
+      - make
+      - r-base
+      - r-cran-rstudioapi
+      - spyder
+      - flex
+      - bison
+      - sqlite3
+      - sqlite3-tools
+      - docker          # On Ubuntu this may be a transitional pkg; docker.io is common. See note below.
+      - openjdk-17-jdk-headless
+      - xterm
+      - scrypt
+      - screen
+      - build-essential
+      - libssl-dev
+      - zlib1g-dev
+      - libbz2-dev
+      - libreadline-dev
+      - libsqlite3-dev
+      - wget
+      - curl
+      - llvm
+      - libncurses5-dev
+      - libncursesw5-dev
+      - xz-utils
+      - tk-dev
+      - libffi-dev
+      - liblzma-dev
+
+  tasks:
+    - name: Make sure apt cache is fresh and apply upgrades
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Download TeamViewer .deb
+      ansible.builtin.get_url:
+        url: "{{ teamviewer_deb_url }}"
+        dest: "{{ teamviewer_deb_path }}"
+        mode: "0644"
+        force: true
+      register: tv_get
+      retries: 3
+      delay: 5
+      until: tv_get is succeeded
+
+    - name: Install TeamViewer from local .deb (auto-resolve dependencies)
+      ansible.builtin.apt:
+        deb: "{{ teamviewer_deb_path }}"
+        state: present
+        update_cache: true
+
+    - name: Ensure OpenSSH server is installed
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+
+    - name: Enable and start ssh service
+      ansible.builtin.service:
+        name: ssh
+        state: started
+        enabled: true
+
+    - name: Install development and runtime packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+
+    # Optional: remove the downloaded .deb after installation
+    - name: Clean up TeamViewer .deb
+      ansible.builtin.file:
+        path: "{{ teamviewer_deb_path }}"
+        state: absent
