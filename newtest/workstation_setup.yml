@@ -81,46 +81,73 @@
         name: "{{ base_packages }}"
         state: present
 
-    # ---------------- Docker CE repo setup ----------------
-    - name: Install Docker prerequisites
-      ansible.builtin.apt:
-        name:
-          - ca-certificates
-          - curl
-        state: present
+    # ---------------- Docker CE repo setup (ASC key) ----------------
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+    update_cache: true
 
-    - name: Ensure /etc/apt/keyrings exists
-      ansible.builtin.file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: "0755"
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
 
-    - name: Add Docker GPG key
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.gpg
-        mode: "0644"
-      register: docker_gpg
-      retries: 3
-      delay: 5
-      until: docker_gpg is succeeded
+# Clean up any previous .gpg key or wrong repo file (safe if absent)
+- name: Remove legacy Docker GPG key (if present)
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.gpg
+    state: absent
 
-    - name: Add Docker APT repository
-      ansible.builtin.apt_repository:
-        repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-        state: present
-        filename: docker
+- name: Remove legacy docker.list if it references docker.gpg
+  ansible.builtin.lineinfile:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+  when: ansible_facts['distribution'] == 'Ubuntu'
+  ignore_errors: true
 
-    - name: Update apt cache after adding Docker repo
-      ansible.builtin.apt:
-        update_cache: true
+- name: Download Docker repository ASC key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"     # a+r
+  register: docker_key
+  retries: 3
+  delay: 5
+  until: docker_key is succeeded
 
-    - name: Install Docker CE and related components
-      ansible.builtin.apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
+# Map Ansible arch to dpkg arch
+- name: Compute dpkg architecture for Docker repo
+  ansible.builtin.set_fact:
+    dpkg_arch: >-
+      {{
+        'arm64' if ansible_architecture in ['aarch64','arm64']
+        else 'amd64' if ansible_architecture in ['x86_64','amd64']
+        else ansible_architecture
+      }}
+
+- name: Add Docker APT repository (uses ASC key)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ dpkg_arch }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu
+      {{ ansible_distribution_release | lower }} stable
+    filename: docker
+    state: present
+
+- name: Update apt cache (after adding Docker repo)
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install Docker CE and related components
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
