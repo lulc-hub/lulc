@@ -1,0 +1,27 @@
+---
+- name: Configure GDM to disable user list using replace (sed-like behavior)
+  hosts: all
+  become: yes
+
+  vars:
+    gdm_config_file: "/etc/gdm3/greeter.dconf-defaults"
+
+  tasks:
+    - name: Check if GDM configuration file exists
+      stat:
+        path: "{{ gdm_config_file }}"
+      register: gdm_config_stat
+
+    - name: Replace commented disable-user-list with uncommented version
+      replace:
+        path: "{{ gdm_config_file }}"
+        regexp: '^#\s*disable-user-list=true'
+        replace: 'disable-user-list=true'
+        backup: yes
+      when: gdm_config_stat.stat.exists
+
+    - name: Restart GDM if changes were made
+      service:
+        name: gdm3
+        state: restarted
+      when: gdm_config_stat.stat.exists
