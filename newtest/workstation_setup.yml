@@ -10,9 +10,7 @@
     teamviewer_deb_url: "https://download.teamviewer.com/download/linux/teamviewer_amd64.deb"
     teamviewer_deb_path: "/tmp/teamviewer_amd64.deb"
 
-    # All Packages required
     base_packages:
-      - openssh-server
       - gcc
       - gnat
       - git
@@ -28,7 +26,6 @@
       - bison
       - sqlite3
       - sqlite3-tools
-      - docker          # On Ubuntu this may be a transitional pkg; docker.io is common. See note below.
       - openjdk-17-jdk-headless
       - xterm
       - scrypt
@@ -50,7 +47,7 @@
       - liblzma-dev
 
   tasks:
-    - name: Make sure apt cache is fresh and apply upgrades
+    - name: Update apt cache and upgrade packages
       ansible.builtin.apt:
         update_cache: true
         upgrade: dist
@@ -61,13 +58,8 @@
         url: "{{ teamviewer_deb_url }}"
         dest: "{{ teamviewer_deb_path }}"
         mode: "0644"
-        force: true
-      register: tv_get
-      retries: 3
-      delay: 5
-      until: tv_get is succeeded
 
-    - name: Install TeamViewer from local .deb (auto-resolve dependencies)
+    - name: Install TeamViewer from .deb
       ansible.builtin.apt:
         deb: "{{ teamviewer_deb_path }}"
         state: present
@@ -78,19 +70,58 @@
         name: openssh-server
         state: present
 
-    - name: Enable and start ssh service
+    - name: Enable and start SSH service
       ansible.builtin.service:
         name: ssh
         state: started
         enabled: true
 
-    - name: Install development and runtime packages
+    - name: Install general development/runtime packages
       ansible.builtin.apt:
         name: "{{ base_packages }}"
         state: present
 
-    # Optional: remove the downloaded .deb after installation
-    - name: Clean up TeamViewer .deb
+    # ---------------- Docker CE repo setup ----------------
+    - name: Install Docker prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+
+    - name: Ensure /etc/apt/keyrings exists
       ansible.builtin.file:
-        path: "{{ teamviewer_deb_path }}"
-        state: absent
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.gpg
+        mode: "0644"
+      register: docker_gpg
+      retries: 3
+      delay: 5
+      until: docker_gpg is succeeded
+
+    - name: Add Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Update apt cache after adding Docker repo
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Docker CE and related components
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
