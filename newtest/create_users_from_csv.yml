@@ -81,20 +81,10 @@
         name: "{{ u.username }}"
         comment: "{{ u.full_name | default('') }}"
         groups: "{{ student_group }}"
+        shell: /bin/bash 
         append: true
         create_home: true
         state: present
-      when:
-        - u.username is defined
-        - u.username | length > 0
-
-    - name: Set bash shell for all users (optional)
-      user:
-        name: "{{ u.username }}"
-        shell: /bin/bash
-      loop: "{{ users_csv.list }}"
-      loop_control:
-        label: "{{ u.username }}"
       when:
         - u.username is defined
         - u.username | length > 0
