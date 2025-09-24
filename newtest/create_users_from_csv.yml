@@ -1,14 +1,16 @@
 ---
 - name: Create multiple users from CSV and copy known_hosts
   hosts: all
-  become: true
+  become: yes
+  become_method: sudo
+  become_user: root
   gather_facts: false
 
   vars:
     # Override via -e "csv_path=/path/to/newusers.csv"
     csv_path: "./newusers.csv"
 
-    admin_group: "stu-admin"
+    student_group: "students"
 
     # Path on the CONTROL NODE to the known_hosts you want to distribute
     known_hosts_src: "~/.ssh/known_hosts"
@@ -56,12 +58,21 @@
       when: not known_hosts_src_stat.stat.exists
 
   tasks:
-    - name: Ensure admin group exists
+    - name: Check sudo access
+      command: whoami
+      register: whoami_result
+      
+    - name: Display current user
+      debug:
+        var: whoami_result.stdout
+        
+  tasks:
+    - name: Ensure student admin group exists (create if missing)
       group:
-        name: "{{ admin_group }}"
+        name: "{{ student_group }}"
         state: present
 
-    - name: Create each user with full name and add to stu-admin
+    - name: Create each user with full name and add to student group
       vars:
         u: "{{ item }}"
       loop: "{{ users_csv.list }}"
@@ -70,7 +81,7 @@
       user:
         name: "{{ u.username }}"
         comment: "{{ u.full_name | default('') }}"
-        groups: "{{ admin_group }}"
+        groups: "{{ student_group }}"
         append: true
         create_home: true
         state: present
@@ -93,34 +104,34 @@
         mode: "0644"
 
     # ------- Optional: also copy to each user's home (uncomment if desired) -------
-    # - name: Ensure per-user .ssh directory exists
-    #   vars:
-    #     u: "{{ item }}"
-    #   loop: "{{ users_csv.list }}"
-    #   loop_control:
-    #     label: "{{ u.username }}"
-    #   file:
-    #     path: "/home/{{ u.username }}/.ssh"
-    #     state: directory
-    #     owner: "{{ u.username }}"
-    #     group: "{{ u.username }}"
-    #     mode: "0700"
-    #   when:
-    #     - u.username is defined
-    #     - u.username | length > 0
-    #
-    # - name: Copy known_hosts into each user's home
-    #   vars:
-    #     u: "{{ item }}"
-    #   loop: "{{ users_csv.list }}"
-    #   loop_control:
-    #     label: "{{ u.username }}"
-    #   copy:
-    #     src: "{{ known_hosts_src | expanduser }}"
-    #     dest: "/home/{{ u.username }}/{{ user_known_hosts_relpath }}"
-    #     owner: "{{ u.username }}"
-    #     group: "{{ u.username }}"
-    #     mode: "0644"
-    #   when:
-    #     - u.username is defined
-    #     - u.username | length > 0
+     - name: Ensure per-user .ssh directory exists
+       vars:
+         u: "{{ item }}"
+       loop: "{{ users_csv.list }}"
+       loop_control:
+         label: "{{ u.username }}"
+       file:
+         path: "/home/{{ u.username }}/.ssh"
+         state: directory
+         owner: "{{ u.username }}"
+         group: "{{ u.username }}"
+         mode: "0700"
+       when:
+         - u.username is defined
+         - u.username | length > 0
+    
+     - name: Copy known_hosts into each user's home
+       vars:
+         u: "{{ item }}"
+       loop: "{{ users_csv.list }}"
+       loop_control:
+         label: "{{ u.username }}"
+       copy:
+         src: "{{ known_hosts_src | expanduser }}"
+         dest: "/home/{{ u.username }}/{{ user_known_hosts_relpath }}"
+         owner: "{{ u.username }}"
+         group: "{{ u.username }}"
+         mode: "0644"
+       when:
+         - u.username is defined
+         - u.username | length > 0
