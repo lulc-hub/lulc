@@ -8,7 +8,7 @@
 
   vars:
     # Override via -e "csv_path=/path/to/users.csv"
-    csv_path: "./users_to_delete.csv"
+    csv_path: "./newusers.csv"
     
     # Optional: Remove home directories (default: true)
     remove_home_dirs: true
