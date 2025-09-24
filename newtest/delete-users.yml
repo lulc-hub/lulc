@@ -1,0 +1,79 @@
+---
+- name: Delete multiple users and cleanup
+  hosts: test_client
+  become: yes
+  become_method: sudo
+  gather_facts: false
+  
+  vars:
+    # List of users to delete
+    users_to_delete:
+      - "teststudent"
+      - "test_student"
+    
+    # Optional: Also remove their home directories
+    remove_home_dirs: true
+    
+    # Optional: Remove groups if they're empty (be careful with this)
+    remove_empty_groups: false
+
+  tasks:
+    - name: Check current users existence
+      command: "getent passwd {{ item }}"
+      register: user_exists
+      ignore_errors: yes
+      loop: "{{ users_to_delete }}"
+      
+    - name: Display users that will be deleted
+      debug:
+        msg: "User '{{ item.item }}' exists and will be deleted"
+      loop: "{{ user_exists.results }}"
+      when: item.rc == 0
+
+    - name: Display users that don't exist
+      debug:
+        msg: "User '{{ item.item }}' does not exist (skipping)"
+      loop: "{{ user_exists.results }}"
+      when: item.rc != 0
+
+    - name: Delete users and remove home directories
+      user:
+        name: "{{ item.item }}"
+        state: absent
+        remove: "{{ remove_home_dirs }}"
+        force: "{{ remove_home_dirs }}"  # Force removal if processes are running
+      loop: "{{ user_exists.results }}"
+      when: item.rc == 0
+
+    - name: Kill any processes owned by deleted users (if home dir removal fails)
+      shell: "pkill -u {{ item.item }} || true"
+      loop: "{{ users_to_delete }}"
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Force remove home directories if still exist
+      file:
+        path: "/home/{{ item }}"
+        state: absent
+      loop: "{{ users_to_delete }}"
+      when: remove_home_dirs
+
+    - name: Verify users have been deleted
+      command: "getent passwd {{ item }}"
+      register: users_after_deletion
+      ignore_errors: yes
+      loop: "{{ users_to_delete }}"
+      changed_when: false
+
+    - name: Display deletion results
+      debug:
+        msg: "User '{{ item.item }}' successfully deleted"
+      loop: "{{ users_after_deletion.results }}"
+      when: item.rc != 0
+
+    - name: Summary of deletion process
+      debug:
+        msg: |
+          Deletion process completed.
+          Users processed: {{ users_to_delete | length }}
+          Home directories removed: {{ remove_home_dirs | bool | string }}
