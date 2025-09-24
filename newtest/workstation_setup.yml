@@ -1,14 +1,16 @@
 ---
 - name: Workstation setup (TeamViewer, SSH, dev tools)
   hosts: all
-  become: true
+  become: yes
+  become_method: sudo
+  become_user: root
   gather_facts: true
 
   vars:
     teamviewer_deb_url: "https://download.teamviewer.com/download/linux/teamviewer_amd64.deb"
     teamviewer_deb_path: "/tmp/teamviewer_amd64.deb"
 
-    # Packages taken directly from your script
+    # All Packages required
     base_packages:
       - openssh-server
       - gcc
