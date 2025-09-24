@@ -3,30 +3,16 @@
   become: yes
   become_method: sudo
   become_user: root
-  gather_facts: false  # Temporarily disable to avoid permission issues
+  gather_facts: false
   
-  tasks:
-    - name: Check sudo access
-      command: whoami
-      register: whoami_result
-      
-    - name: Display current user
-      debug:
-        var: whoami_result.stdout
-
   vars:
-    # Override these via -e or group_vars/host_vars if you like
-    user_username: "teststudent"
-    user_full_name: "Test Student"
-    admin_group: "students"
-
-    # Path on the CONTROL NODE to the known_hosts file you want to distribute
-    # You can pass -e "known_hosts_src=~/.ssh/known_hosts" when running
+    user_username: "test_student"
+    user_full_name: "Tes Student"
+    student_group: "students"
+    # Path on the CONTROL NODE to the known_hosts file you want to distribute    
     known_hosts_src: "~/.ssh/known_hosts"
-
     # Destination on the REMOTE machines (system-wide)
     known_hosts_dst_system: "/etc/ssh/ssh_known_hosts"
-
     # Optional: also place a copy in the user's home (commented tasks below)
     known_hosts_dst_user: ".ssh/known_hosts"
 
@@ -48,25 +34,37 @@
       when: not known_hosts_src_stat.stat.exists
 
   tasks:
-    - name: Ensure admin group exists (create if missing)
-      group:
-        name: "{{ admin_group }}"
-        state: present
+    - name: Check sudo access
+      command: whoami
+      register: whoami_result
+      
+    - name: Display current user
+      debug:
+        var: whoami_result.stdout
 
-    - name: Ensure user exists with full name and is in admin group
+    - name: Ensure student admin group exists (create if missing)
+      group:
+        name: "{{ student_group }}"
+        state: present
+      become: yes
+
+    - name: Ensure user exists with full name, bash shell, and is in student group
       user:
         name: "{{ user_username }}"
         comment: "{{ user_full_name }}"
-        groups: "{{ admin_group }}"
+        groups: "{{ student_group }}"
+        shell: /bin/bash  # Explicitly set bash shell
         append: true
         create_home: true
         state: present
+      become: yes
 
     - name: Ensure system-wide SSH directory exists
       file:
         path: "{{ known_hosts_dst_system | dirname }}"
         state: directory
         mode: "0755"
+      become: yes
 
     - name: Copy known_hosts to system-wide location on remote
       copy:
@@ -75,20 +73,22 @@
         owner: root
         group: root
         mode: "0644"
+      become: yes
 
-    # -------- Optional per-user copy (uncomment if you want user-local known_hosts) --------
-    # - name: Ensure user's .ssh directory exists
-    #   file:
-    #     path: "/home/{{ user_username }}/.ssh"
-    #     state: directory
-    #     owner: "{{ user_username }}"
-    #     group: "{{ user_username }}"
-    #     mode: "0700"
-    #
-    # - name: Copy known_hosts to user's home
-    #   copy:
-    #     src: "{{ known_hosts_src | expanduser }}"
-    #     dest: "/home/{{ user_username }}/{{ known_hosts_dst_user }}"
-    #     owner: "{{ user_username }}"
-    #     group: "{{ user_username }}"
-    #     mode: "0644"
+    - name: Ensure user's .ssh directory exists
+      file:
+        path: "/home/{{ user_username }}/.ssh"
+        state: directory
+        owner: "{{ user_username }}"
+        group: "{{ user_username }}"
+        mode: "0700"
+      become: yes
+    
+    - name: Copy known_hosts to user's home
+      copy:
+        src: "{{ known_hosts_src | expanduser }}"
+        dest: "/home/{{ user_username }}/{{ known_hosts_dst_user }}"
+        owner: "{{ user_username }}"
+        group: "{{ user_username }}"
+        mode: "0644"
+      become: yes
