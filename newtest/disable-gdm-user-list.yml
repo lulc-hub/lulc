@@ -3,11 +3,12 @@
   hosts: all
   become: yes
   become_method: sudo
-  become_user: root
+  become_user: root  
   gather_facts: false
-  
+
   vars:
     gdm_config_file: "/etc/gdm3/greeter.dconf-defaults"
+    backup_extension: ".backup"
 
   tasks:
     - name: Check if GDM configuration file exists
@@ -15,16 +16,50 @@
         path: "{{ gdm_config_file }}"
       register: gdm_config_stat
 
-    - name: Replace commented disable-user-list with uncommented version
-      replace:
-        path: "{{ gdm_config_file }}"
-        regexp: '^#\s*disable-user-list=true'
-        replace: 'disable-user-list=true'
-        backup: yes
+    - name: Fail if GDM configuration file not found
+      fail:
+        msg: "GDM configuration file {{ gdm_config_file }} not found. This playbook is for systems using GDM3."
+      when: not gdm_config_stat.stat.exists
+
+    - name: Create backup of original GDM configuration
+      copy:
+        src: "{{ gdm_config_file }}"
+        dest: "{{ gdm_config_file }}{{ backup_extension }}"
+        remote_src: yes
+        owner: root
+        group: root
+        mode: "0644"
       when: gdm_config_stat.stat.exists
 
-    - name: Restart GDM if changes were made
+    - name: Enable disable-user-list setting (uncomment if commented)
+      lineinfile:
+        path: "{{ gdm_config_file }}"
+        regexp: '^#\s*disable-user-list=true'
+        line: 'disable-user-list=true'
+        state: present
+        backup: yes
+      register: config_change
+
+    - name: Add disable-user-list setting if it doesn't exist
+      lineinfile:
+        path: "{{ gdm_config_file }}"
+        line: 'disable-user-list=true'
+        state: present
+        insertafter: '\[org/gnome/login-screen\]'
+      when: not config_change.changed
+
+    - name: Verify the change was made
+      command: grep -E "^(#\s*)?disable-user-list=true" "{{ gdm_config_file }}"
+      register: verify_change
+      changed_when: false
+      failed_when: verify_change.rc != 0
+
+    - name: Display verification result
+      debug:
+        msg: "GDM configuration updated successfully: {{ verify_change.stdout }}"
+
+    - name: Restart GDM service to apply changes
       service:
         name: gdm3
         state: restarted
-      when: gdm_config_stat.stat.exists
+      when: config_change.changed
