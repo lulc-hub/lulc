@@ -61,12 +61,11 @@
     - name: Check sudo access
       command: whoami
       register: whoami_result
-      
+
     - name: Display current user
       debug:
         var: whoami_result.stdout
-        
-  tasks:
+
     - name: Ensure student admin group exists (create if missing)
       group:
         name: "{{ student_group }}"
@@ -89,6 +88,17 @@
         - u.username is defined
         - u.username | length > 0
 
+    - name: Set bash shell for all users (optional)
+      user:
+        name: "{{ u.username }}"
+        shell: /bin/bash
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.username }}"
+      when:
+        - u.username is defined
+        - u.username | length > 0
+
     - name: Ensure system-wide SSH directory exists
       file:
         path: "{{ known_hosts_dst_system | dirname }}"
@@ -104,34 +114,34 @@
         mode: "0644"
 
     # ------- Optional: also copy to each user's home (uncomment if desired) -------
-     - name: Ensure per-user .ssh directory exists
-       vars:
-         u: "{{ item }}"
-       loop: "{{ users_csv.list }}"
-       loop_control:
-         label: "{{ u.username }}"
-       file:
-         path: "/home/{{ u.username }}/.ssh"
-         state: directory
-         owner: "{{ u.username }}"
-         group: "{{ u.username }}"
-         mode: "0700"
-       when:
-         - u.username is defined
-         - u.username | length > 0
-    
-     - name: Copy known_hosts into each user's home
-       vars:
-         u: "{{ item }}"
-       loop: "{{ users_csv.list }}"
-       loop_control:
-         label: "{{ u.username }}"
-       copy:
-         src: "{{ known_hosts_src | expanduser }}"
-         dest: "/home/{{ u.username }}/{{ user_known_hosts_relpath }}"
-         owner: "{{ u.username }}"
-         group: "{{ u.username }}"
-         mode: "0644"
-       when:
-         - u.username is defined
-         - u.username | length > 0
+    - name: Ensure per-user .ssh directory exists
+      vars:
+        u: "{{ item }}"
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.username }}"
+      file:
+        path: "/home/{{ u.username }}/.ssh"
+        state: directory
+        owner: "{{ u.username }}"
+        group: "{{ u.username }}"
+        mode: "0700"
+      when:
+        - u.username is defined
+        - u.username | length > 0
+
+    - name: Copy known_hosts into each user's home
+      vars:
+        u: "{{ item }}"
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.username }}"
+      copy:
+        src: "{{ known_hosts_src | expanduser }}"
+        dest: "/home/{{ u.username }}/{{ user_known_hosts_relpath }}"
+        owner: "{{ u.username }}"
+        group: "{{ u.username }}"
+        mode: "0644"
+      when:
+        - u.username is defined
+        - u.username | length > 0
