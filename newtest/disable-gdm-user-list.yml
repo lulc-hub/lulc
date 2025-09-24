@@ -1,8 +1,10 @@
 ---
-- name: Configure GDM to disable user list using replace (sed-like behavior)
+- name: Configure GDM to disable user list on login screen
   hosts: all
   become: yes
-
+  become_method: sudo
+  gather_facts: false
+  
   vars:
     gdm_config_file: "/etc/gdm3/greeter.dconf-defaults"
 
