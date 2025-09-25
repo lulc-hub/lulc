@@ -74,7 +74,7 @@
 
     - name: Check sudoers drop-in exists locally (controller)
       ansible.builtin.stat:
-        path: "/etc/sudoers.d/{{ sema_username }}"
+        path: "/etc/sudoers.d/{{ semaphore_username }}"
       delegate_to: localhost
       become: true
       run_once: true
@@ -82,7 +82,7 @@
     
     - name: Read sudoers drop-in as root from controller
       ansible.builtin.slurp:
-        src: "/etc/sudoers.d/{{ sema_username }}"
+        src: "/etc/sudoers.d/{{ semaphore_username }}"
       delegate_to: localhost
       become: true
       run_once: true
@@ -99,7 +99,7 @@
     
     - name: Copy sudoers drop-in to remote (validated)
       ansible.builtin.copy:
-        dest: "/etc/sudoers.d/{{ sema_username }}"
+        dest: "/etc/sudoers.d/{{ semaphore_username }}"
         owner: root
         group: root
         mode: "0440"
