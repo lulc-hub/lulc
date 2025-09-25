@@ -1,6 +1,6 @@
 ---
 - name: Create system user 'semaphore', install SSH key, and allow passwordless sudo
-  hosts: new_device
+  hosts: test_client
   become: yes
   become_method: sudo
   become_user: root  
