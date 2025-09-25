@@ -1,0 +1,81 @@
+---
+- name: Create system user 'semaphore', install SSH key, and allow passwordless sudo
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    semaphore_username: "semaphore"
+    semaphore_home: "/home/semaphore"
+    # Plaintext password is hashed at runtime (SHA-512) on the controller
+    semaphore_plain_password: "sema!0g12"
+    # Path to the *local/controller* user's SSH public key for 'semaphore'
+    # Change to id_rsa.pub if that's what you use.
+    local_semaphore_pubkey_path: "~semaphore/.ssh/id_ed25519.pub"
+
+  pre_tasks:
+    - name: Ensure sudo package is present (for all common distros)
+      ansible.builtin.package:
+        name: sudo
+        state: present
+
+    - name: Check local public key exists on the control node
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.stat:
+        path: "{{ local_semaphore_pubkey_path | expanduser }}"
+      register: semaphore_pub_stat
+
+    - name: Fail if local public key is missing
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.fail:
+        msg: >-
+          SSH public key not found at {{ local_semaphore_pubkey_path | expanduser }} on the control node.
+          Adjust 'local_semaphore_pubkey_path' to your actual key (e.g., id_ed25519.pub).
+      when: not semaphore_pub_stat.stat.exists
+
+  tasks:
+    - name: Create system user 'semaphore' with home directory
+      ansible.builtin.user:
+        name: "{{ semaphore_username }}"
+        system: true
+        home: "{{ semaphore_home }}"
+        create_home: true
+        shell: /bin/bash
+        password: "{{ semaphore_plain_password | password_hash('sha512') }}"
+        state: present
+
+    - name: Ensure .ssh directory exists with correct permissions
+      ansible.builtin.file:
+        path: "{{ semaphore_home }}/.ssh"
+        state: directory
+        owner: "{{ semaphore_username }}"
+        group: "{{ semaphore_username }}"
+        mode: "0700"
+
+    - name: Install local 'semaphore' public key into remote user's authorized_keys
+      ansible.builtin.authorized_key:
+        user: "{{ semaphore_username }}"
+        state: present
+        key: "{{ lookup('file', local_semaphore_pubkey_path | expanduser) }}"
+        path: "{{ semaphore_home }}/.ssh/authorized_keys"
+        manage_dir: false
+      # authorized_key sets correct file perms automatically (0600)
+
+    - name: Add 'semaphore' to sudo group (helpful on Debian/Ubuntu)
+      ansible.builtin.user:
+        name: "{{ semaphore_username }}"
+        groups: sudo
+        append: true
+
+    - name: Allow passwordless sudo for 'semaphore' via sudoers.d
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ semaphore_username }}"
+        owner: root
+        group: root
+        mode: "0440"
+        content: |
+          {{ semaphore_username }} ALL=(ALL) NOPASSWD:ALL
+      validate: "visudo -cf %s"
+
