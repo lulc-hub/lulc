@@ -1,0 +1,13 @@
+---
+- name: Test SSH connection and gather basic info
+  hosts: new_device
+  gather_facts: true
+  
+  tasks:
+    - name: Display connection information
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          IP: {{ ansible_default_ipv4.address }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          User: {{ ansible_user_id }}
