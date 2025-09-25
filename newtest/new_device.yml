@@ -79,3 +79,14 @@
           {{ semaphore_username }} ALL=(ALL) NOPASSWD:ALL
       validate: "visudo -cf %s"
 
+    - name: Ensure OpenSSH server is installed
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+
+    - name: Enable and start SSH service
+      ansible.builtin.service:
+        name: ssh
+        state: started
+        enabled: true      
+
