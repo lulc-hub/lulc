@@ -72,20 +72,21 @@
         groups: sudo
         append: true
 
-    - name: Ensure /etc/sudoers.d exists
-      ansible.builtin.file:
-        path: /etc/sudoers.d
-        state: directory
-        owner: root
-        group: root
-        mode: "0750"
-
-    - name: Allow passwordless sudo for user via sudoers.d (validated)
-      ansible.builtin.template:
-        src: "semaphore_sudoers.j2"
-        dest: "/etc/sudoers.d/{{ semaphore_username }}"
+    - name: Check if sudoers drop-in exists locally
+      ansible.builtin.stat:
+        path: "/etc/sudoers.d/{{ sema_username }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: sudoers_file_local
+    
+    - name: Copy sudoers drop-in from controller to remote
+      ansible.builtin.copy:
+        src: "/etc/sudoers.d/{{ sema_username }}"
+        dest: "/etc/sudoers.d/{{ sema_username }}"
         owner: root
         group: root
         mode: "0440"
         validate: "visudo -cf %s"
+      when: sudoers_file_local.stat.exists
 
