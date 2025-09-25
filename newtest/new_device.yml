@@ -1,6 +1,6 @@
 ---
 - name: Create system user 'semaphore', install SSH key, and allow passwordless sudo
-  hosts: all
+  hosts: lu_test
   become: true
   gather_facts: false
 
