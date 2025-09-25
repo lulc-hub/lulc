@@ -10,7 +10,7 @@
     semaphore_username: "semaphore"
     semaphore_home: "/home/semaphore"
     # Plaintext password is hashed at runtime (SHA-512) on the controller
-    semaphore_plain_password: "1@2S3m@sys!"
+    semaphore_plain_password: "$6$TBg0zfxRVbWBxVPL$f1.a6bvCyKGdILGjOV/CKXQep4uIsh68Ue5WHOVvV5azuUZiqJeoJb1aHc7qQG2dY0ybhgErs6EdUdS7ETooE0"
     # Path to the *local/controller* user's SSH public key for 'semaphore'
     # Change to id_ed25519.pub if that's what you use.
     local_semaphore_pubkey_path: "/home/semaphore/.ssh/id_ed25519.pub"
