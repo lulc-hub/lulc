@@ -24,7 +24,8 @@
     - name: Check local public key exists on the control node
       delegate_to: localhost
       run_once: true
-      ansible.builtin.stat:
+      become: false
+      stat:
         path: "{{ local_semaphore_pubkey_path | expanduser }}"
       register: semaphore_pub_stat
 
