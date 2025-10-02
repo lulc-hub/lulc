@@ -7,14 +7,13 @@
       register: ping_result
       failed_when: ping_result.failed
 
-  tasks:
     - name: Check sudo access
-      command: whoami
+      ansible.builtin.command: whoami
       register: whoami_result
-      
+
     - name: Display current user
-      debug:
-        var: whoami_result.stdout   
+      ansible.builtin.debug:
+        var: whoami_result.stdout
 
     - name: Display ping result
       ansible.builtin.debug:
