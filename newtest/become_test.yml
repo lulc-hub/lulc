@@ -1,5 +1,5 @@
 ---
-- hosts: test_client
+- hosts: lab_clients
   become: yes
   become_method: sudo
   become_user: root
@@ -13,8 +13,3 @@
     - name: Display current user
       debug:
         var: whoami_result.stdout
-        
-    - name: Install apache2
-      package:
-        name: apache2
-        state: present
