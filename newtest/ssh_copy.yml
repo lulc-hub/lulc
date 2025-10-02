@@ -1,0 +1,7 @@
+  ---
+  - hosts: lab_clients
+    remote_user: admin-linux
+    tasks:
+      - authorized_key:
+          user: semaphore
+          key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
