@@ -1,9 +1,13 @@
 ---
-- name: Test SSH connection and gather basic info
-  hosts: new_device
+- name: Test connection and gather basic info
+  hosts: lab_clients
   gather_facts: true
   
   tasks:
+  - name: Ping web servers
+      ping:
+      register: ping_result
+      
     - name: Display connection information
       debug:
         msg: |
