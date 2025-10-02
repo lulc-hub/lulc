@@ -1,18 +1,20 @@
 ---
 - name: Test connection and gather basic info
   hosts: lab_clients
-  ping:
-  register: ping_result
-  failed_when: ping_result.failed
+  tasks:
+    - name: Ping hosts to test connectivity
+      ansible.builtin.ping:
+      register: ping_result
+      failed_when: ping_result.failed
 
-- name: Display ping result
-  debug:
-    msg: "Ping result for {{ inventory_hostname }}: {{ ping_result.ping }}"
+    - name: Display ping result
+      ansible.builtin.debug:
+        msg: "Ping result for {{ inventory_hostname }}: {{ ping_result.ping }}"
 
-- name: Display connection information
-  debug:
-    msg: |
-      Host: {{ inventory_hostname }}
-      IP: {{ ansible_default_ipv4.address | default('No IPv4 address') }}
-      OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
-      User: {{ ansible_user_id }}
+    - name: Display connection information
+      ansible.builtin.debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          IP: {{ ansible_default_ipv4.address | default('No IPv4 address') }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          User: {{ ansible_user_id }}
