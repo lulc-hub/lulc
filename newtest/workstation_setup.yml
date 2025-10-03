@@ -81,11 +81,7 @@
         url: https://packages.microsoft.com/keys/microsoft.asc
         state: present
 
-    - name: Add VS Code repository
-      ansible.builtin.apt_repository:
-        repo: deb [arch=amd64] https://packages.microsoft.com/repos/code stable main
-        state: present
-        filename: vscode
+    - name: Add VS NubSptBoxNext
 
     - name: Update apt cache and upgrade packages
       ansible.builtin.apt:
@@ -183,11 +179,6 @@
       delay: 5
       until: fastjsonschema_remove is succeeded
 
-    - name: Install general development/runtime packages
-      ansible.builtin.apt:
-        name: "{{ base_packages }}"
-        state: present
-
     - name: Install Python packages system-wide
       ansible.builtin.pip:
         name: "{{ python_packages }}"
@@ -205,6 +196,11 @@
       ansible.builtin.debug:
         msg: "Pip installation failed with output: {{ pip_install_python.stderr }}"
       when: pip_install_python is failed
+
+    - name: Install general development/runtime packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
 
     - name: Download TeamViewer .deb
       ansible.builtin.get_url:
