@@ -128,7 +128,15 @@
         name: "{{ python_apt_packages_to_remove }}"
         state: absent
         purge: true
-      ignore_errors: true
+      register: apt_remove
+      retries: 3
+      delay: 5
+      until: apt_remove is succeeded
+
+    - name: Debug apt removal failure
+      ansible.builtin.debug:
+        msg: "Failed to remove apt packages: {{ apt_remove.stderr }}"
+      when: apt_remove is failed
 
     - name: Install pip manually using get-pip.py
       ansible.builtin.shell: curl -sS https://bootstrap.pypa.io/get-pip.py | python3
@@ -164,6 +172,16 @@
       ansible.builtin.debug:
         msg: "Pip upgrade failed with output: {{ pip_upgrade.stderr }}"
       when: pip_upgrade is failed
+
+    - name: Ensure python3-fastjsonschema is absent before pip install
+      ansible.builtin.apt:
+        name: python3-fastjsonschema
+        state: absent
+        purge: true
+      register: fastjsonschema_remove
+      retries: 3
+      delay: 5
+      until: fastjsonschema_remove is succeeded
 
     - name: Install general development/runtime packages
       ansible.builtin.apt:
