@@ -1,6 +1,6 @@
 ---
 - name: Workstation setup (TeamViewer, SSH, dev tools)
-  hosts: test
+  hosts: lab1
   become: yes
   become_method: sudo
   become_user: root
