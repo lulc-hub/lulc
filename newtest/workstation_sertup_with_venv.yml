@@ -245,18 +245,6 @@
         state: present
         update_cache: true
 
-    # ---------------- SSH setup ----------------
-    - name: Ensure OpenSSH server is installed
-      ansible.builtin.apt:
-        name: openssh-server
-        state: present
-
-    - name: Enable and start SSH service
-      ansible.builtin.service:
-        name: ssh
-        state: started
-        enabled: true
-
     # ---------------- Docker CE repo setup ----------------
     - name: Install Docker prerequisites
       ansible.builtin.apt:
