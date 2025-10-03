@@ -91,10 +91,13 @@
         name: "{{ base_packages }}"
         state: present
 
-    # ---------------- venv: detect/upgrade logic ----------------
+    # =========================
+    # venv UPGRADE (version-aware)
+    # Run automatically on each play, or manually: -t venv_upgrade
+    # =========================
     - name: Check if venv python exists
       ansible.builtin.stat:
-        path: "{{ venv_dir }}/bin/python"
+        path: "{{ venv_dir }}/bin/python3"
       register: stat_venv_python
       tags: [venv_upgrade]
 
@@ -107,7 +110,7 @@
 
     - name: Read venv Python version (major.minor.patch)
       ansible.builtin.command: >
-        {{ venv_dir }}/bin/python -c 'import sys; print(".".join(map(str, sys.version_info[:3])))'
+        {{ venv_dir }}/bin/python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))'
       register: venv_pyver_cmd
       changed_when: false
       failed_when: false
@@ -119,10 +122,6 @@
         sys_pyver: "{{ sys_pyver_cmd.stdout | default('') }}"
         venv_pyver: "{{ (venv_pyver_cmd.stdout | default('missing')) if stat_venv_python.stat.exists else 'missing' }}"
         venv_exists: "{{ stat_venv_python.stat.exists }}"
-      tags: [venv_upgrade]
-
-    - name: Decide if venv needs (re)creation due to version mismatch
-      ansible.builtin.set_fact:
         venv_needs_upgrade: "{{ (not venv_exists) or (venv_exists and venv_pyver != sys_pyver) }}"
       tags: [venv_upgrade]
 
@@ -134,6 +133,7 @@
           - "Upgrade needed: {{ venv_needs_upgrade }}"
       tags: [venv_upgrade]
 
+    # --- Recreate mode (cleanest) ---
     - name: Remove old venv (recreate mode)
       ansible.builtin.file:
         path: "{{ venv_dir }}"
@@ -141,13 +141,14 @@
       when: venv_needs_upgrade and venv_upgrade_mode == 'recreate'
       tags: [venv_upgrade]
 
-    - name: Create virtual environment (new or after removal)
-      ansible.builtin.command: "python3 -m venv {{ venv_dir }}"
+    - name: Create virtual environment (new or after removal) with real binaries
+      ansible.builtin.command: "python3 -m venv --copies {{ venv_dir }}"
       args:
         creates: "{{ venv_dir }}/bin/activate"
       when: (not venv_exists) or (venv_needs_upgrade and venv_upgrade_mode == 'recreate')
       tags: [venv_upgrade]
 
+    # --- In-place mode (keeps site-packages; less robust) ---
     - name: In-place upgrade venv to latest system python
       ansible.builtin.command: "python3 -m venv --upgrade {{ venv_dir }}"
       when: venv_needs_upgrade and venv_upgrade_mode == 'inplace'
@@ -167,14 +168,15 @@
         executable: "{{ venv_dir }}/bin/pip"
       tags: [venv_upgrade]
 
-    - name: Ensure system-wide python3 points to venv
+    # Always (re)link after venv (re)build/upgrade
+    - name: Ensure system-wide python3 points to venv python3
       ansible.builtin.alternatives:
         name: python3
-        path: "{{ venv_dir }}/bin/python"
+        path: "{{ venv_dir }}/bin/python3"
         link: /usr/bin/python3
       tags: [venv_upgrade]
 
-    - name: Ensure system-wide pip3 points to venv
+    - name: Ensure system-wide pip3 points to venv pip
       ansible.builtin.alternatives:
         name: pip3
         path: "{{ venv_dir }}/bin/pip"
@@ -187,8 +189,84 @@
         dest: "{{ item.dest }}"
         state: link
       loop:
-        - { src: "{{ venv_dir }}/bin/python", dest: /usr/local/bin/python-ds }
+        - { src: "{{ venv_dir }}/bin/python3", dest: /usr/local/bin/python-ds }
         - { src: "{{ venv_dir }}/bin/pip", dest: /usr/local/bin/pip-ds }
+
+    # =========================
+    # venv FIX (repair alt-loop) — run with: -t venv_fix
+    # =========================
+    - name: Reset python3 alternative to system default
+      ansible.builtin.command: update-alternatives --auto python3
+      register: reset_py
+      changed_when: "'link group python3 doesn't exist' not in (reset_py.stderr | default(''))"
+      failed_when: false
+      tags: [venv_fix]
+
+    - name: Reset pip3 alternative to system default
+      ansible.builtin.command: update-alternatives --auto pip3
+      register: reset_pip
+      changed_when: "'link group pip3 doesn't exist' not in (reset_pip.stderr | default(''))"
+      failed_when: false
+      tags: [venv_fix]
+
+    - name: Remove existing venv to rebuild with copies (break symlink loops)
+      ansible.builtin.file:
+        path: "{{ venv_dir }}"
+        state: absent
+      tags: [venv_fix]
+
+    - name: Create venv with real binaries (no symlinks back to /usr/bin)
+      ansible.builtin.command: "python3 -m venv --copies {{ venv_dir }}"
+      args:
+        creates: "{{ venv_dir }}/bin/activate"
+      tags: [venv_fix]
+
+    - name: Upgrade pip/setuptools/wheel in repaired venv
+      ansible.builtin.pip:
+        name: [pip, setuptools, wheel]
+        state: latest
+        executable: "{{ venv_dir }}/bin/pip"
+      tags: [venv_fix]
+
+    - name: Reinstall Python packages in repaired venv
+      ansible.builtin.pip:
+        name: "{{ python_packages }}"
+        state: latest
+        executable: "{{ venv_dir }}/bin/pip"
+      tags: [venv_fix]
+
+    - name: Resolve venv python3 real path (repair check)
+      ansible.builtin.command: "readlink -f {{ venv_dir }}/bin/python3"
+      register: venv_python3_real_fix
+      changed_when: false
+      tags: [venv_fix]
+
+    - name: Resolve system python3 real path (repair check)
+      ansible.builtin.command: "readlink -f /usr/bin/python3"
+      register: system_python3_real_fix
+      changed_when: false
+      tags: [venv_fix]
+
+    - name: Fail if venv python3 resolves to system python3 (would re-loop)
+      ansible.builtin.assert:
+        that:
+          - venv_python3_real_fix.stdout != system_python3_real_fix.stdout
+        fail_msg: "Venv python3 resolves to system python3; recreate with --copies failed."
+      tags: [venv_fix]
+
+    - name: Point python3 alternative to repaired venv
+      ansible.builtin.alternatives:
+        name: python3
+        path: "{{ venv_dir }}/bin/python3"
+        link: /usr/bin/python3
+      tags: [venv_fix]
+
+    - name: Point pip3 alternative to repaired venv
+      ansible.builtin.alternatives:
+        name: pip3
+        path: "{{ venv_dir }}/bin/pip"
+        link: /usr/bin/pip3
+      tags: [venv_fix]
 
     # ---------------- TeamViewer ----------------
     - name: Download TeamViewer .deb
@@ -240,4 +318,48 @@
         path: /etc/apt/sources.list.d/docker.list
         state: absent
         regexp: '^deb\s.*docker.*gpg.*$'
-      when: ansible_facts['dis]()_
+      when: ansible_facts['distribution'] == 'Ubuntu'
+      ignore_errors: true
+
+    - name: Download Docker repository ASC key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Compute dpkg architecture for Docker repo
+      ansible.builtin.set_fact:
+        dpkg_arch: >-
+          {{
+            'arm64' if ansible_architecture in ['aarch64','arm64']
+            else 'amd64' if ansible_architecture in ['x86_64','amd64']
+            else ansible_architecture
+          }}
+
+    - name: Add Docker APT repository (uses ASC key)
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ dpkg_arch }} signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release | lower }} stable
+        filename: docker
+        state: present
+
+    - name: Update apt cache (after adding Docker repo)
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Docker CE and related components
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure docker group exists
+      ansible.builtin.group:
+        name: docker
+        state: present
