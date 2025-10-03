@@ -1,6 +1,6 @@
 ---
 - name: Workstation setup (TeamViewer, SSH, dev tools)
-  hosts: all
+  hosts: test
   become: yes
   become_method: sudo
   become_user: root
@@ -45,9 +45,6 @@
       - libffi-dev
       - liblzma-dev
       - code
-    vscode_users:
-      - labu
-      - sam
 
   tasks:
     - name: Add Microsoft GPG key
@@ -119,6 +116,7 @@
       ansible.builtin.lineinfile:
         path: /etc/apt/sources.list.d/docker.list
         state: absent
+        regexp: '^deb\s.*docker.*gpg.*$'
       when: ansible_facts['distribution'] == 'Ubuntu'
       ignore_errors: true
 
@@ -169,20 +167,8 @@
         name: docker
         state: present
 
-    - name: Install Remote Containers extension for each user
-      block:
-        - name: Check if Remote Containers extension is already installed for {{ item }}
-          ansible.builtin.command: code --list-extensions
-          register: extensions_list
-          changed_when: false
-          become: true
-          become_user: "{{ item }}"
-
-        - name: Install Remote Containers extension for {{ item }}
-          ansible.builtin.command: code --install-extension ms-vscode-remote.remote-containers
-          when: "'ms-vscode-remote.remote-containers' not in extensions_list.stdout"
-          become: true
-          become_user: "{{ item }}"
-          register: install_result
-          changed_when: install_result.rc == 0
-      loop: "{{ vscode_users }}"
+    - name: Update apt cache after removals
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+      ignore_errors: true
