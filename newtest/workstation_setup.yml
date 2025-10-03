@@ -131,7 +131,7 @@
       ignore_errors: true
 
     - name: Install pip manually using get-pip.py
-      ansible.builtin.command: curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+      ansible.builtin.shell: curl -sS https://bootstrap.pypa.io/get-pip.py | python3
       args:
         creates: /usr/local/bin/pip3
       environment:
