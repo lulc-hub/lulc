@@ -131,6 +131,16 @@
         purge: true
       ignore_errors: true
 
+    - name: Reinstall python3-pip to ensure pip3 availability
+      ansible.builtin.apt:
+        name: python3-pip
+        state: present
+        update_cache: true
+      register: pip_reinstall
+      retries: 3
+      delay: 5
+      until: pip_reinstall is succeeded
+
     - name: Upgrade pip to latest version
       ansible.builtin.pip:
         name: pip
@@ -148,16 +158,6 @@
       ansible.builtin.debug:
         msg: "Pip upgrade failed with output: {{ pip_upgrade.stderr }}"
       when: pip_upgrade is failed
-
-    - name: Reinstall python3-pip to ensure pip3 availability
-      ansible.builtin.apt:
-        name: python3-pip
-        state: present
-        update_cache: true
-      register: pip_reinstall
-      retries: 3
-      delay: 5
-      until: pip_reinstall is succeeded
 
     - name: Install general development/runtime packages
       ansible.builtin.apt:
