@@ -1,0 +1,211 @@
+---
+- name: Workstation setup (TeamViewer, SSH, dev tools)
+  hosts: lab1
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: true
+
+  vars:
+    teamviewer_deb_url: "https://download.teamviewer.com/download/linux/teamviewer_amd64.deb"
+    teamviewer_deb_path: "/tmp/teamviewer_amd64.deb"
+    base_packages:
+      - gcc
+      - gnat
+      - git
+      - default-jre
+      - default-jdk
+      - erlang
+      - nodejs
+      - make
+      - r-base
+      - r-cran-rstudioapi
+      - spyder
+      - python3-numpy
+      - python3-scipy
+      - python3-matplotlib
+      - python3-pandas
+      - python3-pycryptodomex
+      - python3-cryptography
+      - python3-pytest
+      - python3-notebook
+      - flex
+      - bison
+      - sqlite3
+      - sqlite3-tools
+      - openjdk-17-jdk-headless
+      - xterm
+      - scrypt
+      - screen
+      - build-essential
+      - libssl-dev
+      - zlib1g-dev
+      - libbz2-dev
+      - libreadline-dev
+      - libsqlite3-dev
+      - wget
+      - curl
+      - llvm
+      - libncurses5-dev
+      - libncursesw5-dev
+      - xz-utils
+      - tk-dev
+      - libffi-dev
+      - liblzma-dev
+      - code
+      - python3
+      - libpng-dev
+      - libfreetype6-dev
+      - libblas-dev
+      - liblapack-dev
+
+  tasks:
+    - name: Add Microsoft GPG key
+      ansible.builtin.apt_key:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        state: present
+
+    - name: Add VS Code repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://packages.microsoft.com/repos/code stable main
+        state: present
+        filename: vscode
+
+    - name: Update apt cache and upgrade packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Install python3
+      ansible.builtin.apt:
+        name: python3
+        state: present
+        update_cache: true
+      register: python_install
+      retries: 3
+      delay: 5
+      until: python_install is succeeded
+
+    - name: Check system resources (disk space)
+      ansible.builtin.command: df -h /
+      register: disk_space
+      changed_when: false
+      failed_when: false
+
+    - name: Debug disk space
+      ansible.builtin.debug:
+        msg: "{{ disk_space.stdout_lines }}"
+      when: disk_space.stdout is defined
+
+    - name: Install general development/runtime packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+      register: apt_install
+      retries: 3
+      delay: 5
+      until: apt_install is succeeded
+
+    - name: Debug apt installation failure
+      ansible.builtin.debug:
+        msg: "Apt installation failed with output: {{ apt_install.stderr }}"
+      when: apt_install is failed
+
+    - name: Download TeamViewer .deb
+      ansible.builtin.get_url:
+        url: "{{ teamviewer_deb_url }}"
+        dest: "{{ teamviewer_deb_path }}"
+        mode: "0644"
+
+    - name: Install TeamViewer from .deb
+      ansible.builtin.apt:
+        deb: "{{ teamviewer_deb_path }}"
+        state: present
+        update_cache: true
+
+    - name: Ensure OpenSSH server is installed
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+
+    - name: Enable and start SSH service
+      ansible.builtin.service:
+        name: ssh
+        state: started
+        enabled: true
+
+    # ---------------- Docker CE repo setup (ASC key) ----------------
+    - name: Install Docker prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Remove legacy Docker GPG key (if present)
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.gpg
+        state: absent
+
+    - name: Remove legacy docker.list if it references docker.gpg
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+        regexp: '^deb\s.*docker.*gpg.*$'
+      when: ansible_facts['distribution'] == 'Ubuntu'
+      ignore_errors: true
+
+    - name: Download Docker repository ASC key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+      register: docker_key
+      retries: 3
+      delay: 5
+      until: docker_key is succeeded
+
+    - name: Compute dpkg architecture for Docker repo
+      ansible.builtin.set_fact:
+        dpkg_arch: >-
+          {{
+            'arm64' if ansible_architecture in ['aarch64','arm64']
+            else 'amd64' if ansible_architecture in ['x86_64','amd64']
+            else ansible_architecture
+          }}
+
+    - name: Add Docker APT repository (uses ASC key)
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ dpkg_arch }} signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release | lower }} stable
+        filename: docker
+        state: present
+
+    - name: Update apt cache (after adding Docker repo)
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Docker CE and related components
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure docker group exists
+      ansible.builtin.group:
+        name: docker
+        state: present
