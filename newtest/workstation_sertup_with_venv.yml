@@ -64,7 +64,9 @@
       - notebook
       - spyder
 
-    venv_dir: /opt/venvs/ds
+    # --- venv settings ---
+    venv_dir: /opt/python-venv
+    venv_upgrade_mode: recreate   # or 'inplace'
 
   tasks:
     - name: Add Microsoft GPG key
@@ -89,39 +91,104 @@
         name: "{{ base_packages }}"
         state: present
 
-    # ---------------- Python venv setup ----------------
-    - name: Create virtual environment for Python packages
+    # ---------------- venv: detect/upgrade logic ----------------
+    - name: Check if venv python exists
+      ansible.builtin.stat:
+        path: "{{ venv_dir }}/bin/python"
+      register: stat_venv_python
+      tags: [venv_upgrade]
+
+    - name: Read system Python version (major.minor.patch)
+      ansible.builtin.command: >
+        python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))'
+      register: sys_pyver_cmd
+      changed_when: false
+      tags: [venv_upgrade]
+
+    - name: Read venv Python version (major.minor.patch)
+      ansible.builtin.command: >
+        {{ venv_dir }}/bin/python -c 'import sys; print(".".join(map(str, sys.version_info[:3])))'
+      register: venv_pyver_cmd
+      changed_when: false
+      failed_when: false
+      when: stat_venv_python.stat.exists
+      tags: [venv_upgrade]
+
+    - name: Set version facts
+      ansible.builtin.set_fact:
+        sys_pyver: "{{ sys_pyver_cmd.stdout | default('') }}"
+        venv_pyver: "{{ (venv_pyver_cmd.stdout | default('missing')) if stat_venv_python.stat.exists else 'missing' }}"
+        venv_exists: "{{ stat_venv_python.stat.exists }}"
+      tags: [venv_upgrade]
+
+    - name: Decide if venv needs (re)creation due to version mismatch
+      ansible.builtin.set_fact:
+        venv_needs_upgrade: "{{ (not venv_exists) or (venv_exists and venv_pyver != sys_pyver) }}"
+      tags: [venv_upgrade]
+
+    - name: Debug version comparison
+      ansible.builtin.debug:
+        msg:
+          - "System Python: {{ sys_pyver }}"
+          - "Venv Python:   {{ venv_pyver }}"
+          - "Upgrade needed: {{ venv_needs_upgrade }}"
+      tags: [venv_upgrade]
+
+    - name: Remove old venv (recreate mode)
+      ansible.builtin.file:
+        path: "{{ venv_dir }}"
+        state: absent
+      when: venv_needs_upgrade and venv_upgrade_mode == 'recreate'
+      tags: [venv_upgrade]
+
+    - name: Create virtual environment (new or after removal)
       ansible.builtin.command: "python3 -m venv {{ venv_dir }}"
       args:
         creates: "{{ venv_dir }}/bin/activate"
+      when: (not venv_exists) or (venv_needs_upgrade and venv_upgrade_mode == 'recreate')
+      tags: [venv_upgrade]
 
-    - name: Upgrade pip/setuptools/wheel inside venv
+    - name: In-place upgrade venv to latest system python
+      ansible.builtin.command: "python3 -m venv --upgrade {{ venv_dir }}"
+      when: venv_needs_upgrade and venv_upgrade_mode == 'inplace'
+      tags: [venv_upgrade]
+
+    - name: Upgrade pip/setuptools/wheel in venv
       ansible.builtin.pip:
-        name:
-          - pip
-          - setuptools
-          - wheel
+        name: [pip, setuptools, wheel]
         state: latest
         executable: "{{ venv_dir }}/bin/pip"
+      tags: [venv_upgrade]
 
-    - name: Install Python packages in venv
+    - name: Install/upgrade Python packages in venv
       ansible.builtin.pip:
         name: "{{ python_packages }}"
-        state: present
+        state: latest
         executable: "{{ venv_dir }}/bin/pip"
+      tags: [venv_upgrade]
 
-    # ---------------- System-wide alias to venv ----------------
-    - name: Replace system python3 with venv python
+    - name: Ensure system-wide python3 points to venv
       ansible.builtin.alternatives:
         name: python3
         path: "{{ venv_dir }}/bin/python"
         link: /usr/bin/python3
+      tags: [venv_upgrade]
 
-    - name: Replace system pip3 with venv pip
+    - name: Ensure system-wide pip3 points to venv
       ansible.builtin.alternatives:
         name: pip3
         path: "{{ venv_dir }}/bin/pip"
         link: /usr/bin/pip3
+      tags: [venv_upgrade]
+
+    - name: Symlink venv python/pip for convenience
+      ansible.builtin.file:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        state: link
+      loop:
+        - { src: "{{ venv_dir }}/bin/python", dest: /usr/local/bin/python-ds }
+        - { src: "{{ venv_dir }}/bin/pip", dest: /usr/local/bin/pip-ds }
 
     # ---------------- TeamViewer ----------------
     - name: Download TeamViewer .deb
@@ -173,48 +240,4 @@
         path: /etc/apt/sources.list.d/docker.list
         state: absent
         regexp: '^deb\s.*docker.*gpg.*$'
-      when: ansible_facts['distribution'] == 'Ubuntu'
-      ignore_errors: true
-
-    - name: Download Docker repository ASC key
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.asc
-        mode: "0644"
-
-    - name: Compute dpkg architecture for Docker repo
-      ansible.builtin.set_fact:
-        dpkg_arch: >-
-          {{
-            'arm64' if ansible_architecture in ['aarch64','arm64']
-            else 'amd64' if ansible_architecture in ['x86_64','amd64']
-            else ansible_architecture
-          }}
-
-    - name: Add Docker APT repository (uses ASC key)
-      ansible.builtin.apt_repository:
-        repo: >-
-          deb [arch={{ dpkg_arch }} signed-by=/etc/apt/keyrings/docker.asc]
-          https://download.docker.com/linux/ubuntu
-          {{ ansible_distribution_release | lower }} stable
-        filename: docker
-        state: present
-
-    - name: Update apt cache (after adding Docker repo)
-      ansible.builtin.apt:
-        update_cache: true
-
-    - name: Install Docker CE and related components
-      ansible.builtin.apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
-
-    - name: Ensure docker group exists
-      ansible.builtin.group:
-        name: docker
-        state: present
+      when: ansible_facts['dis]()_
