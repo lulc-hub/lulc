@@ -63,6 +63,7 @@
       - python3-scipy
       - python3-numpy
       - python3-fastjsonschema
+      - python3-pyparsing
     python_packages:
       - numpy
       - scikit-learn
