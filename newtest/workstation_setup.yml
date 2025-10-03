@@ -1,6 +1,6 @@
 ---
 - name: Workstation setup (TeamViewer, SSH, dev tools, Python packages)
-  hosts: lab1
+  hosts: all
   become: yes
   become_method: sudo
   become_user: root
@@ -20,7 +20,6 @@
       - make
       - r-base
       - r-cran-rstudioapi
-      - spyder
       - flex
       - bison
       - sqlite3
@@ -74,6 +73,7 @@
       - pytest
       - pandas
       - notebook
+      - spyder
 
   tasks:
     - name: Add Microsoft GPG key
@@ -81,7 +81,11 @@
         url: https://packages.microsoft.com/keys/microsoft.asc
         state: present
 
-    - name: Add VS NubSptBoxNext
+    - name: Add VS Code repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://packages.microsoft.com/repos/code stable main
+        state: present
+        filename: vscode
 
     - name: Update apt cache and upgrade packages
       ansible.builtin.apt:
