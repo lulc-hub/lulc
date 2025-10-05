@@ -1,6 +1,6 @@
 ---
 - name: Workstation setup (TeamViewer, SSH, dev tools, Python packages in venv via PATH)
-  hosts: lab1
+  hosts: lab3, lab4
   become: yes
   become_method: sudo
   become_user: root
