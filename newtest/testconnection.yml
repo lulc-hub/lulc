@@ -1,6 +1,6 @@
 ---
 - name: Test connection and gather basic info
-  hosts: lab3
+  hosts: lab3, lab4
   tasks:
     - name: Ping hosts to test connectivity
       ansible.builtin.ping:
