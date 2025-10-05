@@ -117,11 +117,15 @@
       when: stat_venv_python.stat.exists
       tags: [venv_upgrade]
 
-    - name: Set version facts
+    - name: Set initial version facts
       ansible.builtin.set_fact:
         sys_pyver: "{{ sys_pyver_cmd.stdout | default('') }}"
         venv_pyver: "{{ (venv_pyver_cmd.stdout | default('missing')) if stat_venv_python.stat.exists else 'missing' }}"
         venv_exists: "{{ stat_venv_python.stat.exists }}"
+      tags: [venv_upgrade]
+
+    - name: Set upgrade needed fact
+      ansible.builtin.set_fact:
         venv_needs_upgrade: "{{ (not venv_exists) or (venv_exists and venv_pyver != sys_pyver) }}"
       tags: [venv_upgrade]
 
