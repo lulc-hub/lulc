@@ -1,6 +1,6 @@
 ---
 - name: Configure GDM to disable user list on login screen
-  hosts: all
+  hosts: lab_clients
   become: yes
   become_method: sudo
   become_user: root  
