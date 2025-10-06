@@ -1,6 +1,6 @@
 ---
 - name: Create system user 'semaphore', install SSH key, and allow passwordless sudo
-  hosts: lab_clients
+  hosts: lu_1
   become: yes
   become_method: sudo
   become_user: root  
