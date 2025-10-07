@@ -1,5 +1,5 @@
 ---
-- hosts: lab_clients
+- hosts: lu_1
   become: yes
   become_method: sudo
   become_user: root
