@@ -1,6 +1,6 @@
 ---
 - name: Check and install Docker if not present, then verify installation
-  hosts: lu_1
+  hosts: test
   become: yes
   become_method: sudo
   become_user: root
