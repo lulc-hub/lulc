@@ -14,7 +14,7 @@
       - docker-buildx-plugin
       - docker-compose-plugin
     default_path: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
-    ansible_user: "{{ ansible_user_id }}"  # Use the SSH user from inventory
+    ansible_user: "your_user"  # Replace with the actual SSH user (e.g., myuser)
 
   tasks:
     - name: Debug system details
@@ -177,7 +177,7 @@
 
     - name: Pause to allow post-install scripts to complete
       ansible.builtin.pause:
-        seconds: 5
+        seconds: 10
       when: docker_check.rc != 0 and not docker_install.failed | default(false)
 
     - name: Ensure docker group exists
@@ -205,7 +205,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Validate Docker access
+    - name: Validate Docker access (root)
       ansible.builtin.command: docker --version
       environment:
         PATH: "{{ default_path }}"
