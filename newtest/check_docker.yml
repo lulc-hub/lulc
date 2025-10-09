@@ -1,6 +1,6 @@
 ---
 - name: Check if Docker is installed
-  hosts: lab3
+  hosts: lu_1
   become: yes
   become_method: sudo
   become_user: root
