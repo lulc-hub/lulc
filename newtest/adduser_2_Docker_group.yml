@@ -52,3 +52,13 @@
           }}
       loop: "{{ group_check.results | default([]) }}"
       when: group_check.results is defined
+
+    # Refreshing group membership
+    - name: Refresh group membership
+      ansible.builtin.command: newgrp docker
+      become: yes
+      become_user: "{{ item }}"
+      changed_when: false
+      failed_when: false
+      loop: "{{ docker_users }}"
+      when: user_update.results is defined and not user_update.results | select('failed') | list | length > 0      
