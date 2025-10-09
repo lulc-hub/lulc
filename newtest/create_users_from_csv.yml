@@ -71,7 +71,7 @@
         name: "{{ student_group }}"
         state: present
 
-    - name: Create each user with full name and add to student group
+    - name: Create each user with full name, password as username, and force password change
       vars:
         u: "{{ item }}"
       loop: "{{ users_csv.list }}"
@@ -85,6 +85,8 @@
         append: true
         create_home: true
         state: present
+        password: "{{ u.Username | password_hash('sha512') }}"
+        password_expire_max: 0
       when:
         - u.Username is defined
         - u.Username | length > 0
@@ -109,29 +111,29 @@
         u: "{{ item }}"
       loop: "{{ users_csv.list }}"
       loop_control:
-        label: "{{ u.username }}"
+        label: "{{ u.Username }}"
       file:
-        path: "/home/{{ u.username }}/.ssh"
+        path: "/home/{{ u.Username }}/.ssh"
         state: directory
-        owner: "{{ u.username }}"
-        group: "{{ u.username }}"
+        owner: "{{ u.Username }}"
+        group: "{{ u.Username }}"
         mode: "0700"
       when:
-        - u.username is defined
-        - u.username | length > 0
+        - u.Username is defined
+        - u.Username | length > 0
 
     - name: Copy known_hosts into each user's home
       vars:
         u: "{{ item }}"
       loop: "{{ users_csv.list }}"
       loop_control:
-        label: "{{ u.username }}"
+        label: "{{ u.Username }}"
       copy:
         src: "{{ known_hosts_src | expanduser }}"
-        dest: "/home/{{ u.username }}/{{ user_known_hosts_relpath }}"
-        owner: "{{ u.username }}"
-        group: "{{ u.username }}"
+        dest: "/home/{{ u.Username }}/{{ user_known_hosts_relpath }}"
+        owner: "{{ u.Username }}"
+        group: "{{ u.Username }}"
         mode: "0644"
       when:
-        - u.username is defined
-        - u.username | length > 0
+        - u.Username is defined
+        - u.Username | length > 0
