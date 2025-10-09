@@ -14,7 +14,6 @@
       - docker-buildx-plugin
       - docker-compose-plugin
     default_path: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
-    ansible_user: "your_user"  # Replace with the actual SSH user (e.g., myuser)
 
   tasks:
     - name: Debug system details
@@ -23,7 +22,6 @@
           - "Ubuntu release: {{ ansible_distribution_release }}"
           - "Architecture: {{ ansible_architecture }}"
           - "Current PATH: {{ ansible_env.PATH }}"
-          - "Ansible user: {{ ansible_user }}"
 
     - name: Check for Docker installation
       ansible.builtin.command: command -v docker
@@ -177,21 +175,8 @@
 
     - name: Pause to allow post-install scripts to complete
       ansible.builtin.pause:
-        seconds: 10
+        seconds: 5
       when: docker_check.rc != 0 and not docker_install.failed | default(false)
-
-    - name: Ensure docker group exists
-      ansible.builtin.group:
-        name: docker
-        state: present
-      when: docker_check.rc != 0
-
-    - name: Add Ansible user to docker group
-      ansible.builtin.user:
-        name: "{{ ansible_user }}"
-        groups: docker
-        append: yes
-      when: docker_check.rc != 0
 
     # --- Re-check Docker installation ---
     - name: Re-check for Docker installation
@@ -205,21 +190,11 @@
       changed_when: false
       failed_when: false
 
-    - name: Validate Docker access (root)
+    - name: Validate Docker access
       ansible.builtin.command: docker --version
       environment:
         PATH: "{{ default_path }}"
       register: docker_version
-      changed_when: false
-      failed_when: false
-      when: docker_recheck.rc == 0
-
-    - name: Validate non-root Docker access
-      ansible.builtin.command: docker --version
-      environment:
-        PATH: "{{ default_path }}"
-      become: no
-      register: docker_nonroot_version
       changed_when: false
       failed_when: false
       when: docker_recheck.rc == 0
@@ -229,8 +204,7 @@
         msg: >-
           {{
             'Docker is now installed at ' + docker_recheck.stdout +
-            ' (Version: ' + docker_version.stdout + ', non-root access: ' +
-            (docker_nonroot_version.stdout if docker_nonroot_version.rc == 0 else 'failed') + ')'
+            ' (Version: ' + docker_version.stdout + ')'
             if docker_recheck.rc == 0 and docker_version.rc == 0
             else 'Docker installation failed'
           }}
