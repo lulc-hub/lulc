@@ -1,6 +1,9 @@
 ---
-- name: Check and install Docker with minimal root privileges, then verify non-root access
+- name: Check and install Docker as root, then verify installation
   hosts: test
+  become: yes
+  become_method: sudo
+  become_user: root
   gather_facts: true
 
   vars:
@@ -22,7 +25,7 @@
           - "Current PATH: {{ ansible_env.PATH }}"
           - "Ansible user: {{ ansible_user }}"
 
-    - name: Check for Docker installation (non-root)
+    - name: Check for Docker installation
       ansible.builtin.command: command -v docker
       environment:
         PATH: "{{ default_path }}"
@@ -46,8 +49,6 @@
           - runc
         state: absent
         purge: yes
-      become: yes
-      become_method: sudo
       ignore_errors: yes
       when: docker_check.rc != 0
 
@@ -56,16 +57,12 @@
         autoclean: yes
         autoremove: yes
         clean: yes
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Remove APT lists directory contents
       ansible.builtin.file:
         path: /var/lib/apt/lists
         state: absent
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Remove conflicting Docker sources files
@@ -77,8 +74,6 @@
         - /etc/apt/sources.list.d/docker.sources
         - /etc/apt/keyrings/docker.asc
         - /etc/apt/keyrings/docker.gpg
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Remove conflicting VS Code sources files
@@ -88,8 +83,6 @@
       loop:
         - /etc/apt/sources.list.d/vscode.list
         - /etc/apt/sources.list.d/vscode.sources
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     # --- Install Docker if not present ---
@@ -102,8 +95,6 @@
           - gnupg
         state: present
         update_cache: true
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Ensure /etc/apt/keyrings exists
@@ -111,8 +102,6 @@
         path: /etc/apt/keyrings
         state: directory
         mode: "0755"
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Download Docker repository ASC key
@@ -120,8 +109,6 @@
         url: https://download.docker.com/linux/ubuntu/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
-      become: yes
-      become_method: sudo
       retries: 3
       delay: 5
       register: key_download
@@ -147,8 +134,6 @@
       ansible.builtin.stat:
         path: /etc/apt/sources.list.d/docker.list
       register: docker_repo_stat
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Add Docker APT repository
@@ -159,16 +144,12 @@
           {{ ansible_distribution_release | lower }} stable
         filename: docker
         state: present
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0 and not docker_repo_stat.stat.exists
 
     - name: Update apt cache after adding Docker repo
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 0
-      become: yes
-      become_method: sudo
       retries: 5
       delay: 10
       register: apt_update
@@ -186,8 +167,6 @@
         state: present
         update_cache: true
         dpkg_options: "force-confdef,force-confold"
-      become: yes
-      become_method: sudo
       register: docker_install
       when: docker_check.rc != 0
 
@@ -198,15 +177,13 @@
 
     - name: Pause to allow post-install scripts to complete
       ansible.builtin.pause:
-        seconds: 10
+        seconds: 5
       when: docker_check.rc != 0 and not docker_install.failed | default(false)
 
     - name: Ensure docker group exists
       ansible.builtin.group:
         name: docker
         state: present
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Add Ansible user to docker group
@@ -214,12 +191,10 @@
         name: "{{ ansible_user }}"
         groups: docker
         append: yes
-      become: yes
-      become_method: sudo
       when: docker_check.rc != 0
 
-    # --- Re-check Docker installation (non-root) ---
-    - name: Re-check for Docker installation (non-root)
+    # --- Re-check Docker installation ---
+    - name: Re-check for Docker installation
       ansible.builtin.command: command -v docker
       environment:
         PATH: "{{ default_path }}"
@@ -230,11 +205,21 @@
       changed_when: false
       failed_when: false
 
-    - name: Validate non-root Docker access
+    - name: Validate Docker access
       ansible.builtin.command: docker --version
       environment:
         PATH: "{{ default_path }}"
       register: docker_version
+      changed_when: false
+      failed_when: false
+      when: docker_recheck.rc == 0
+
+    - name: Validate non-root Docker access
+      ansible.builtin.command: docker --version
+      environment:
+        PATH: "{{ default_path }}"
+      become: no
+      register: docker_nonroot_version
       changed_when: false
       failed_when: false
       when: docker_recheck.rc == 0
@@ -244,6 +229,8 @@
         msg: >-
           {{
             'Docker is now installed at ' + docker_recheck.stdout +
-            ' (Version: ' + docker_version.stdout + ', accessible by non-root user)' if docker_recheck.rc == 0 and docker_version.rc == 0
-            else 'Docker installation or non-root access failed'
+            ' (Version: ' + docker_version.stdout + ', non-root access: ' +
+            (docker_nonroot_version.stdout if docker_nonroot_version.rc == 0 else 'failed') + ')'
+            if docker_recheck.rc == 0 and docker_version.rc == 0
+            else 'Docker installation failed'
           }}
