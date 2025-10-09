@@ -1,6 +1,6 @@
 ---
 - name: Delete multiple users from CSV file
-  hosts: all
+  hosts: test
   become: yes
   become_method: sudo
   become_user: root
