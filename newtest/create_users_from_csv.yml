@@ -1,6 +1,6 @@
 ---
 - name: Create multiple users from CSV and copy known_hosts
-  hosts: all
+  hosts: test
   become: yes
   become_method: sudo
   become_user: root
@@ -76,18 +76,18 @@
         u: "{{ item }}"
       loop: "{{ users_csv.list }}"
       loop_control:
-        label: "{{ u.username }}"
+        label: "{{ u.Username }}"
       user:
-        name: "{{ u.username }}"
-        comment: "{{ u.full_name | default('') }}"
+        name: "{{ u.Username }}"
+        comment: "{{ u.FirstName }} {{ u.LastName }}"
         groups: "{{ student_group }}"
         shell: /bin/bash 
         append: true
         create_home: true
         state: present
       when:
-        - u.username is defined
-        - u.username | length > 0
+        - u.Username is defined
+        - u.Username | length > 0
 
     - name: Ensure system-wide SSH directory exists
       file:
