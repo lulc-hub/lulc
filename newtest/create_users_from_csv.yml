@@ -47,7 +47,7 @@
         name: "{{ student_group }}"
         state: present
 
-    - name: Ensure developer group exists (create if missing)
+    - name: Ensure Teaching group exists (create if missing)
       group:
         name: "{{ teach_group }}"
         state: present
