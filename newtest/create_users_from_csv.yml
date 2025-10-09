@@ -1,13 +1,12 @@
 ---
-- name: Create multiple users from CSV, add to docker group if exists, and copy known_hosts
-  hosts: test
+- name: Create multiple users from CSV, add to docker group if exists, and force password change
+  hosts: all
   become: yes
   become_method: sudo
   become_user: root
   gather_facts: false
 
   vars:
-    # Override via -e "csv_path=/path/to/newusers.csv"
     csv_path: "./newusers.csv"
     student_group: "students"
 
@@ -74,8 +73,17 @@
         create_home: true
         state: present
         password: "{{ u.Username | password_hash('sha512') }}"
-        password_expire_max: 0
       when:
         - u.Username is defined
         - u.Username | length > 0
 
+    - name: Force password change on first login
+      vars:
+        u: "{{ item }}"
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.Username }}"
+      command: chage -d 0 {{ u.Username }}
+      when:
+        - u.Username is defined
+        - u.Username | length > 0
