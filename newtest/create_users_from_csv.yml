@@ -36,7 +36,7 @@
   tasks:
     - name: Check sudo access
       command: whoami
-      register: whoami_resultD@Mp132^1
+      register: whoami_result
 
     - name: Display current user
       debug:
