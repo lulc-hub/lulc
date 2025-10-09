@@ -7,10 +7,7 @@
   gather_facts: false
 
   vars:
-    # Override via -e "csv_path=/path/to/users.csv"
     csv_path: "./newusers.csv"
-    
-    # Optional: Remove home directories (default: true)
     remove_home_dirs: true
 
   pre_tasks:
@@ -37,70 +34,63 @@
 
     - name: Display users that will be deleted
       debug:
-        msg: "Users to delete: {{ users_csv.list | map(attribute='username') | list }}"
+        msg: "Users to delete: {{ users_csv.list | map(attribute='Username') | list }}"
       run_once: true
 
   tasks:
     - name: Check which users exist on the system
-      command: "id {{ item.username }}"
+      command: "id {{ item.Username }}"
       register: user_existence
       ignore_errors: yes
       changed_when: false
       loop: "{{ users_csv.list }}"
       loop_control:
-        label: "{{ item.username }}"
+        label: "{{ item.Username }}"
 
     - name: Delete users that exist
       user:
-        name: "{{ item.item.username }}"
+        name: "{{ item.item.Username }}"
         state: absent
         remove: "{{ remove_home_dirs }}"
         force: "{{ remove_home_dirs }}"
       loop: "{{ user_existence.results }}"
       loop_control:
-        label: "{{ item.item.username }}"
+        label: "{{ item.item.Username }}"
       when: item.rc == 0
 
-    - name: Display skipped users (non-existent)
-      debug:
-        msg: "User '{{ item.item.username }}' does not exist (skipped)"
+    - name: Force kill processes owned by deleted users
+      shell: "pkill -u {{ item.item.Username }} || true"
       loop: "{{ user_existence.results }}"
       loop_control:
-        label: "{{ item.item.username }}"
-      when: item.rc != 0
-
-    - name: Force kill any processes owned by deleted users
-      shell: "pkill -u {{ item.username }} || true"
-      loop: "{{ users_csv.list }}"
+        label: "{{ item.item.Username }}"
+      when: item.rc == 0
       ignore_errors: yes
       changed_when: false
 
-    - name: Force remove home directories if still exist
-      file:
-        path: "/home/{{ item.username }}"
-        state: absent
-      loop: "{{ users_csv.list }}"
-      when: remove_home_dirs
-
     - name: Verify users have been deleted
-      command: "id {{ item.username }}"
+      command: "id {{ item.item.Username }}"
       register: deletion_verification
       ignore_errors: yes
       changed_when: false
-      loop: "{{ users_csv.list }}"
+      loop: "{{ user_existence.results }}"
       loop_control:
-        label: "{{ item.username }}"
+        label: "{{ item.item.Username }}"
+      when: item.rc == 0
 
     - name: Display deletion results
       debug:
-        msg: "User '{{ item.item.username }}' successfully deleted"
+        msg: "User '{{ item.item.Username }}' {{ 'successfully deleted' if item.rc != 0 else 'still exists (deletion failed)' }}"
       loop: "{{ deletion_verification.results }}"
-      when: item.rc != 0
+      loop_control:
+        label: "{{ item.item.Username }}"
+      when: item.rc is defined
 
     - name: Summary report
       debug:
         msg: |
           Deletion process completed.
           Total users in CSV: {{ users_csv.list | length }}
+          Users deleted: {{ deletion_verification.results | selectattr('rc', '!=', 0) | length }}
+          Users skipped (non-existent): {{ user_existence.results | selectattr('rc', '!=', 0) | length }}
           Home directories removed: {{ remove_home_dirs | bool | string }}
       run_once: true
