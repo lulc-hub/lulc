@@ -1,9 +1,6 @@
 ---
-- name: Check and install Docker if not present, then verify installation
+- name: Check and install Docker with minimal root privileges, then verify non-root access
   hosts: test
-  become: yes
-  become_method: sudo
-  become_user: root
   gather_facts: true
 
   vars:
@@ -14,6 +11,7 @@
       - docker-buildx-plugin
       - docker-compose-plugin
     default_path: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+    ansible_user: "{{ ansible_user_id }}"  # Use the SSH user from inventory
 
   tasks:
     - name: Debug system details
@@ -22,8 +20,9 @@
           - "Ubuntu release: {{ ansible_distribution_release }}"
           - "Architecture: {{ ansible_architecture }}"
           - "Current PATH: {{ ansible_env.PATH }}"
+          - "Ansible user: {{ ansible_user }}"
 
-    - name: Check for Docker installation
+    - name: Check for Docker installation (non-root)
       ansible.builtin.command: command -v docker
       environment:
         PATH: "{{ default_path }}"
@@ -35,6 +34,64 @@
       ansible.builtin.debug:
         msg: "{{ 'Docker is installed at ' + docker_check.stdout if docker_check.rc == 0 else 'Docker is not installed on this host' }}"
 
+    # --- Clean up APT configuration to prevent duplicate repository errors ---
+    - name: Uninstall old Docker packages
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose
+          - docker-doc
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
+        purge: yes
+      become: yes
+      become_method: sudo
+      ignore_errors: yes
+      when: docker_check.rc != 0
+
+    - name: Clean APT cache and lists
+      ansible.builtin.apt:
+        autoclean: yes
+        autoremove: yes
+        clean: yes
+      become: yes
+      become_method: sudo
+      when: docker_check.rc != 0
+
+    - name: Remove APT lists directory contents
+      ansible.builtin.file:
+        path: /var/lib/apt/lists
+        state: absent
+      become: yes
+      become_method: sudo
+      when: docker_check.rc != 0
+
+    - name: Remove conflicting Docker sources files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/docker.sources
+        - /etc/apt/keyrings/docker.asc
+        - /etc/apt/keyrings/docker.gpg
+      become: yes
+      become_method: sudo
+      when: docker_check.rc != 0
+
+    - name: Remove conflicting VS Code sources files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/vscode.list
+        - /etc/apt/sources.list.d/vscode.sources
+      become: yes
+      become_method: sudo
+      when: docker_check.rc != 0
+
     # --- Install Docker if not present ---
     - name: Install Docker prerequisites
       ansible.builtin.apt:
@@ -45,18 +102,8 @@
           - gnupg
         state: present
         update_cache: true
-      when: docker_check.rc != 0
-
-    - name: Remove conflicting VS Code .sources file
-      ansible.builtin.file:
-        path: /etc/apt/sources.list.d/vscode.sources
-        state: absent
-      when: docker_check.rc != 0
-
-    - name: Remove legacy Docker repository
-      ansible.builtin.file:
-        path: /etc/apt/sources.list.d/docker.list
-        state: absent
+      become: yes
+      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Ensure /etc/apt/keyrings exists
@@ -64,6 +111,8 @@
         path: /etc/apt/keyrings
         state: directory
         mode: "0755"
+      become: yes
+      become_method: sudo
       when: docker_check.rc != 0
 
     - name: Download Docker repository ASC key
@@ -71,6 +120,8 @@
         url: https://download.docker.com/linux/ubuntu/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
+      become: yes
+      become_method: sudo
       retries: 3
       delay: 5
       register: key_download
@@ -92,6 +143,14 @@
         msg: "DPKG Arch: {{ dpkg_arch }}"
       when: docker_check.rc != 0
 
+    - name: Check if Docker repo exists
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/docker.list
+      register: docker_repo_stat
+      become: yes
+      become_method: sudo
+      when: docker_check.rc != 0
+
     - name: Add Docker APT repository
       ansible.builtin.apt_repository:
         repo: >-
@@ -100,71 +159,20 @@
           {{ ansible_distribution_release | lower }} stable
         filename: docker
         state: present
-      when: docker_check.rc != 0
-
-    # --- Enhanced Cleanup Before Docker Repo Setup ---
-    - name: Clean APT cache and lists
-      ansible.builtin.apt:
-        autoclean: yes
-        autoremove: yes
-        clean: yes
       become: yes
-
-    - name: Remove APT lists directory contents
-      ansible.builtin.file:
-        path: /var/lib/apt/lists
-        state: absent
-      become: yes
-
-    - name: Remove conflicting Docker sources files
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - /etc/apt/sources.list.d/docker.list
-        - /etc/apt/sources.list.d/docker.sources
-        - /etc/apt/keyrings/docker.asc
-        - /etc/apt/keyrings/docker.gpg  # Legacy key
-      become: yes
-
-    - name: Remove conflicting VS Code sources files (common cause)
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - /etc/apt/sources.list.d/vscode.list
-        - /etc/apt/sources.list.d/vscode.sources
-      become: yes
-
-    # --- Continue with Repo Setup (existing tasks) ---
-    - name: Ensure /etc/apt/keyrings exists
-      # ... (unchanged)
-
-    - name: Download Docker repository ASC key
-      # ... (unchanged, but add retries if needed)
-
-    - name: Add Docker APT repository
-      # ... (unchanged)
-
-    - name: Update apt cache after adding Docker repo (with enhanced handling)
-      ansible.builtin.apt:
-        update_cache: true
-        cache_valid_time: 0  # Force fresh update
-      become: yes
-      retries: 5
-      delay: 10
-      register: apt_update
-      until: apt_update.rc == 0  # Ensure rc == 0 (success)
-      ignore_errors: false  # Fail fast if still issues
+      become_method: sudo
+      when: docker_check.rc != 0 and not docker_repo_stat.stat.exists
 
     - name: Update apt cache after adding Docker repo
       ansible.builtin.apt:
         update_cache: true
-      retries: 3
-      delay: 5
+        cache_valid_time: 0
+      become: yes
+      become_method: sudo
+      retries: 5
+      delay: 10
       register: apt_update
-      until: apt_update is success
-      ignore_errors: true
+      until: apt_update.rc == 0
       when: docker_check.rc != 0
 
     - name: Debug APT update result
@@ -178,6 +186,8 @@
         state: present
         update_cache: true
         dpkg_options: "force-confdef,force-confold"
+      become: yes
+      become_method: sudo
       register: docker_install
       when: docker_check.rc != 0
 
@@ -195,10 +205,21 @@
       ansible.builtin.group:
         name: docker
         state: present
+      become: yes
+      become_method: sudo
       when: docker_check.rc != 0
 
-    # --- Re-check Docker installation with retries ---
-    - name: Re-check for Docker installation
+    - name: Add Ansible user to docker group
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+      become: yes
+      become_method: sudo
+      when: docker_check.rc != 0
+
+    # --- Re-check Docker installation (non-root) ---
+    - name: Re-check for Docker installation (non-root)
       ansible.builtin.command: command -v docker
       environment:
         PATH: "{{ default_path }}"
@@ -209,7 +230,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Check Docker version for additional validation
+    - name: Validate non-root Docker access
       ansible.builtin.command: docker --version
       environment:
         PATH: "{{ default_path }}"
@@ -223,6 +244,6 @@
         msg: >-
           {{
             'Docker is now installed at ' + docker_recheck.stdout +
-            ' (Version: ' + docker_version.stdout + ')' if docker_recheck.rc == 0
-            else 'Docker installation failed'
+            ' (Version: ' + docker_version.stdout + ', accessible by non-root user)' if docker_recheck.rc == 0 and docker_version.rc == 0
+            else 'Docker installation or non-root access failed'
           }}
