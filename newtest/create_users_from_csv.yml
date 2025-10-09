@@ -7,7 +7,7 @@
   gather_facts: false
 
   vars:
-    csv_path: "./newusers.csv"
+    csv_path: "./newuser_LZSCC441.csv"
     student_group: "students"
     teach_group: "LZSCC_441"
 
