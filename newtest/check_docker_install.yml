@@ -56,11 +56,19 @@
         autoremove: yes
         clean: yes
       when: docker_check.rc != 0
+      ignore_errors: yes  # Avoid failing if lists directory is missing
 
     - name: Remove APT lists directory contents
       ansible.builtin.file:
         path: /var/lib/apt/lists
         state: absent
+      when: docker_check.rc != 0
+
+    - name: Ensure /var/lib/apt/lists exists
+      ansible.builtin.file:
+        path: /var/lib/apt/lists
+        state: directory
+        mode: "0755"
       when: docker_check.rc != 0
 
     - name: Remove conflicting Docker sources files
@@ -108,7 +116,7 @@
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
       retries: 3
-      delay: 5
+      delay: 10
       register: key_download
       until: key_download is success
       when: docker_check.rc != 0
@@ -175,7 +183,7 @@
 
     - name: Pause to allow post-install scripts to complete
       ansible.builtin.pause:
-        seconds: 5
+        seconds: 10
       when: docker_check.rc != 0 and not docker_install.failed | default(false)
 
     # --- Re-check Docker installation ---
@@ -185,7 +193,7 @@
         PATH: "{{ default_path }}"
       register: docker_recheck
       retries: 3
-      delay: 5
+      delay: 10
       until: docker_recheck.rc == 0
       changed_when: false
       failed_when: false
