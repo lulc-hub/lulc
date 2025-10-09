@@ -1,6 +1,6 @@
 ---
-- name: Create sudo users from a CSV file, add to groups, and force password change
-  hosts: lab_all
+- name: Create users from a CSV file, add to admins group with sudo privileges, and force password change
+  hosts: lu_1
   become: yes
   become_method: sudo
   become_user: root
@@ -9,7 +9,6 @@
   vars:
     csv_path: "./aca.csv"
     admin_group: "Academics"
-    sudo_group: "sudo"
 
   pre_tasks:
     - name: Check the CSV exists on the control node
@@ -57,10 +56,15 @@
         name: "{{ admin_group }}"
         state: present
 
-    - name: Ensure sudo group exists (create if missing)
-      group:
-        name: "{{ sudo_group }}"
-        state: present
+    - name: Grant sudo privileges to admins group
+      copy:
+        content: "%{{ admin_group }} ALL=(ALL:ALL) ALL\n"
+        dest: "/etc/sudoers.d/{{ admin_group }}"
+        mode: "0440"
+        owner: root
+        group: root
+        validate: "/usr/sbin/visudo -cf %s"
+      when: ansible_facts['os_family'] is defined and ansible_facts['os_family'] in ['Debian', 'RedHat']
 
     - name: Check if docker group exists
       group:
@@ -76,7 +80,7 @@
     - name: Create each user with full name, password as username, and add to groups
       vars:
         u: "{{ item }}"
-        user_groups: "{{ [admin_group, sudo_group] + (['docker'] if docker_group_exists else []) }}"
+        user_groups: "{{ [admin_group] + (['docker'] if docker_group_exists else []) }}"
       loop: "{{ users_csv.list }}"
       loop_control:
         label: "{{ u.Username }}"
