@@ -1,10 +1,18 @@
 ---
-- name: Check if Docker is installed
+- name: Check and install Docker if not present, then verify installation
   hosts: lu_1
   become: yes
   become_method: sudo
   become_user: root
   gather_facts: true
+
+  vars:
+    docker_packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
 
   tasks:
     - name: Check for Docker installation
@@ -13,6 +21,82 @@
       changed_when: false
       failed_when: false
 
-    - name: Display Docker installation status
+    - name: Display initial Docker installation status
       ansible.builtin.debug:
         msg: "{{ 'Docker is installed at ' + docker_check.stdout if docker_check.rc == 0 else 'Docker is not installed on this host' }}"
+
+    # --- Install Docker if not present ---
+    - name: Install Docker prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: true
+      when: docker_check.rc != 0
+
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      when: docker_check.rc != 0
+
+    - name: Download Docker repository ASC key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+      when: docker_check.rc != 0
+
+    - name: Compute dpkg architecture for Docker repo
+      ansible.builtin.set_fact:
+        dpkg_arch: >-
+          {{
+            'arm64' if ansible_architecture in ['aarch64','arm64']
+            else 'amd64' if ansible_architecture in ['x86_64','amd64']
+            else ansible_architecture
+          }}
+      when: docker_check.rc != 0
+
+    - name: Add Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ dpkg_arch }} signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release | lower }} stable
+        filename: docker
+        state: present
+      when: docker_check.rc != 0
+
+    - name: Update apt cache after adding Docker repo
+      ansible.builtin.apt:
+        update_cache: true
+      retries: 3
+      delay: 5
+      register: apt_update
+      until: apt_update is success
+      when: docker_check.rc != 0
+
+    - name: Install Docker CE and related components
+      ansible.builtin.apt:
+        name: "{{ docker_packages }}"
+        state: present
+      when: docker_check.rc != 0
+
+    - name: Ensure docker group exists
+      ansible.builtin.group:
+        name: docker
+        state: present
+      when: docker_check.rc != 0
+
+    # --- Re-check Docker installation ---
+    - name: Re-check for Docker installation
+      ansible.builtin.command: command -v docker
+      register: docker_recheck
+      changed_when: false
+      failed_when: false
+
+    - name: Display final Docker installation status
+      ansible.builtin.debug:
+        msg: "{{ 'Docker is now installed at ' + docker_recheck.stdout if docker_recheck.rc == 0 else 'Docker installation failed' }}"
