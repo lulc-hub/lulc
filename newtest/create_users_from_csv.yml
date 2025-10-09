@@ -13,13 +13,13 @@
     student_group: "students"
 
     # Path on the CONTROL NODE to the known_hosts you want to distribute
-    known_hosts_src: "~/.ssh/known_hosts"
+    #known_hosts_src: "~/.ssh/known_hosts"
 
     # Destination on the REMOTE machines (system-wide)
-    known_hosts_dst_system: "/etc/ssh/ssh_known_hosts"
+    #known_hosts_dst_system: "/etc/ssh/ssh_known_hosts"
 
     # Optional per-user known_hosts (commented tasks below)
-    user_known_hosts_relpath: ".ssh/known_hosts"
+    #user_known_hosts_relpath: ".ssh/known_hosts"
 
   pre_tasks:
     - name: Check the CSV exists on the control node
