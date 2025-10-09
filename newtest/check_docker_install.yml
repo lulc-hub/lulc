@@ -55,8 +55,8 @@
         autoclean: yes
         autoremove: yes
         clean: yes
+      ignore_errors: yes
       when: docker_check.rc != 0
-      ignore_errors: yes  # Avoid failing if lists directory is missing
 
     - name: Remove APT lists directory contents
       ansible.builtin.file:
@@ -116,9 +116,9 @@
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
       retries: 3
-      delay: 10
+      delay:  10
       register: key_download
-      until: key_download is success
+      until: key_download is succeeded
       when: docker_check.rc != 0
 
     - name: Compute dpkg architecture for Docker repo
@@ -159,7 +159,7 @@
       retries: 5
       delay: 10
       register: apt_update
-      until: apt_update.rc == 0
+      until: apt_update is succeeded
       when: docker_check.rc != 0
 
     - name: Debug APT update result
@@ -174,6 +174,9 @@
         update_cache: true
         dpkg_options: "force-confdef,force-confold"
       register: docker_install
+      retries: 3
+      delay:  10
+      until: docker_install is succeeded
       when: docker_check.rc != 0
 
     - name: Debug Docker installation result
@@ -193,7 +196,7 @@
         PATH: "{{ default_path }}"
       register: docker_recheck
       retries: 3
-      delay: 10
+      delay:  10
       until: docker_recheck.rc == 0
       changed_when: false
       failed_when: false
