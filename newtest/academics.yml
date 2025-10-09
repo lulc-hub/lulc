@@ -1,0 +1,105 @@
+---
+- name: Create sudo users from a CSV file, add to groups, and force password change
+  hosts: lab_all
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: false
+
+  vars:
+    csv_path: "./aca.csv"
+    admin_group: "Academics"
+    sudo_group: "sudo"
+
+  pre_tasks:
+    - name: Check the CSV exists on the control node
+      delegate_to: localhost
+      run_once: true
+      stat:
+        path: "{{ csv_path | expanduser }}"
+      register: csv_stat
+
+    - name: Fail if CSV not found
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: "CSV not found at {{ csv_path | expanduser }} on the control node."
+      when: not csv_stat.stat.exists
+
+    - name: Read users from CSV (requires community.general)
+      delegate_to: localhost
+      run_once: true
+      community.general.read_csv:
+        path: "{{ csv_path | expanduser }}"
+      register: users_csv
+
+    - name: Check for duplicate usernames
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: "Duplicate usernames found: {{ duplicates }}"
+      vars:
+        usernames: "{{ users_csv.list | map(attribute='Username') | list }}"
+        duplicates: "{{ usernames | unique | select('equalto', '') | list + (usernames | reject('equalto', '') | list | duplicates) }}"
+      when: duplicates | length > 0
+
+  tasks:
+    - name: Check sudo access
+      command: whoami
+      register: whoami_result
+
+    - name: Display current user
+      debug:
+        var: whoami_result.stdout
+
+    - name: Ensure admin group exists (create if missing)
+      group:
+        name: "{{ admin_group }}"
+        state: present
+
+    - name: Ensure sudo group exists (create if missing)
+      group:
+        name: "{{ sudo_group }}"
+        state: present
+
+    - name: Check if docker group exists
+      group:
+        name: docker
+        state: present
+      register: docker_group_check
+      ignore_errors: true
+
+    - name: Set fact for docker group existence
+      set_fact:
+        docker_group_exists: "{{ docker_group_check.state is defined and docker_group_check.state == 'present' }}"
+
+    - name: Create each user with full name, password as username, and add to groups
+      vars:
+        u: "{{ item }}"
+        user_groups: "{{ [admin_group, sudo_group] + (['docker'] if docker_group_exists else []) }}"
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.Username }}"
+      user:
+        name: "{{ u.Username }}"
+        comment: "{{ u.FirstName }} {{ u.LastName }}"
+        groups: "{{ user_groups | join(',') }}"
+        shell: /bin/bash
+        append: true
+        create_home: true
+        state: present
+        password: "{{ u.Username | password_hash('sha512') }}"
+      when:
+        - u.Username is defined
+        - u.Username | length > 0
+
+    - name: Force password change on first login
+      vars:
+        u: "{{ item }}"
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ u.Username }}"
+      command: chage -d 0 {{ u.Username }}
+      when:
+        - u.Username is defined
+        - u.Username | length > 0
