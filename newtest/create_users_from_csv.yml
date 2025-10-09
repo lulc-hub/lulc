@@ -1,6 +1,6 @@
 ---
 - name: Create multiple users from CSV, add to groups, and force password change
-  hosts: lu_1
+  hosts: lab_all
   become: yes
   become_method: sudo
   become_user: root
