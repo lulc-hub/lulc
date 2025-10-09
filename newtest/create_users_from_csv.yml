@@ -1,6 +1,6 @@
 ---
 - name: Create multiple users from CSV, add to docker group if exists, and force password change
-  hosts: all
+  hosts: lu_1
   become: yes
   become_method: sudo
   become_user: root
