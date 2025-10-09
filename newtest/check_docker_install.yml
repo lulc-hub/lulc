@@ -102,6 +102,61 @@
         state: present
       when: docker_check.rc != 0
 
+    # --- Enhanced Cleanup Before Docker Repo Setup ---
+    - name: Clean APT cache and lists
+      ansible.builtin.apt:
+        autoclean: yes
+        autoremove: yes
+        clean: yes
+      become: yes
+
+    - name: Remove APT lists directory contents
+      ansible.builtin.file:
+        path: /var/lib/apt/lists
+        state: absent
+      become: yes
+
+    - name: Remove conflicting Docker sources files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/docker.sources
+        - /etc/apt/keyrings/docker.asc
+        - /etc/apt/keyrings/docker.gpg  # Legacy key
+      become: yes
+
+    - name: Remove conflicting VS Code sources files (common cause)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/vscode.list
+        - /etc/apt/sources.list.d/vscode.sources
+      become: yes
+
+    # --- Continue with Repo Setup (existing tasks) ---
+    - name: Ensure /etc/apt/keyrings exists
+      # ... (unchanged)
+
+    - name: Download Docker repository ASC key
+      # ... (unchanged, but add retries if needed)
+
+    - name: Add Docker APT repository
+      # ... (unchanged)
+
+    - name: Update apt cache after adding Docker repo (with enhanced handling)
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0  # Force fresh update
+      become: yes
+      retries: 5
+      delay: 10
+      register: apt_update
+      until: apt_update.rc == 0  # Ensure rc == 0 (success)
+      ignore_errors: false  # Fail fast if still issues
+
     - name: Update apt cache after adding Docker repo
       ansible.builtin.apt:
         update_cache: true
