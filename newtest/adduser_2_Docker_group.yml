@@ -1,0 +1,54 @@
+---
+- name: Add users to the docker group
+  hosts: test
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: false  # Disabled to avoid fact-gathering issues
+
+  vars:
+    docker_users:
+      - "henry"  #Replace with actual usernames, e.g., ['user1', 'user2']
+      - "semaphore"
+
+  tasks:
+    - name: Debug configured users
+      ansible.builtin.debug:
+        msg: "Users to add to docker group: {{ docker_users }}"
+
+    - name: Ensure docker group exists
+      ansible.builtin.group:
+        name: docker
+        state: present
+
+    - name: Add users to docker group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: docker
+        append: yes
+      loop: "{{ docker_users }}"
+      register: user_update
+      failed_when: user_update.failed and 'user does not exist' not in user_update.msg
+
+    - name: Debug user update result
+      ansible.builtin.debug:
+        msg: "{{ user_update.results | select('failed') | map(attribute='msg') | list }}"
+      when: user_update.results is defined and user_update.results | select('failed') | list | length > 0
+
+    - name: Validate docker group membership
+      ansible.builtin.command: groups {{ item }}
+      register: group_check
+      changed_when: false
+      failed_when: false
+      loop: "{{ docker_users }}"
+      when: user_update.results is defined and not user_update.results | select('failed') | list | length > 0
+
+    - name: Display docker group membership
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            'User ' + item.item + ' is in groups: ' + item.stdout + ' (docker group: ' +
+            ('present' if 'docker' in item.stdout else 'missing') + ')'
+          }}
+      loop: "{{ group_check.results | default([]) }}"
+      when: group_check.results is defined
