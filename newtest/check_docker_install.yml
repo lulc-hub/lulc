@@ -13,10 +13,20 @@
       - containerd.io
       - docker-buildx-plugin
       - docker-compose-plugin
+    default_path: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
   tasks:
+    - name: Debug system details
+      ansible.builtin.debug:
+        msg:
+          - "Ubuntu release: {{ ansible_distribution_release }}"
+          - "Architecture: {{ ansible_architecture }}"
+          - "Current PATH: {{ ansible_env.PATH }}"
+
     - name: Check for Docker installation
       ansible.builtin.command: command -v docker
+      environment:
+        PATH: "{{ default_path }}"
       register: docker_check
       changed_when: false
       failed_when: false
@@ -31,8 +41,22 @@
         name:
           - ca-certificates
           - curl
+          - apt-transport-https
+          - gnupg
         state: present
         update_cache: true
+      when: docker_check.rc != 0
+
+    - name: Remove conflicting VS Code .sources file
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/vscode.sources
+        state: absent
+      when: docker_check.rc != 0
+
+    - name: Remove legacy Docker repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
       when: docker_check.rc != 0
 
     - name: Ensure /etc/apt/keyrings exists
@@ -47,6 +71,10 @@
         url: https://download.docker.com/linux/ubuntu/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
+      retries: 3
+      delay: 5
+      register: key_download
+      until: key_download is success
       when: docker_check.rc != 0
 
     - name: Compute dpkg architecture for Docker repo
@@ -57,6 +85,11 @@
             else 'amd64' if ansible_architecture in ['x86_64','amd64']
             else ansible_architecture
           }}
+      when: docker_check.rc != 0
+
+    - name: Debug computed architecture
+      ansible.builtin.debug:
+        msg: "DPKG Arch: {{ dpkg_arch }}"
       when: docker_check.rc != 0
 
     - name: Add Docker APT repository
@@ -76,13 +109,32 @@
       delay: 5
       register: apt_update
       until: apt_update is success
+      ignore_errors: true
       when: docker_check.rc != 0
+
+    - name: Debug APT update result
+      ansible.builtin.debug:
+        msg: "{{ apt_update }}"
+      when: docker_check.rc != 0 and apt_update.failed | default(false)
 
     - name: Install Docker CE and related components
       ansible.builtin.apt:
         name: "{{ docker_packages }}"
         state: present
+        update_cache: true
+        dpkg_options: "force-confdef,force-confold"
+      register: docker_install
       when: docker_check.rc != 0
+
+    - name: Debug Docker installation result
+      ansible.builtin.debug:
+        msg: "{{ docker_install }}"
+      when: docker_check.rc != 0 and docker_install.failed | default(false)
+
+    - name: Pause to allow post-install scripts to complete
+      ansible.builtin.pause:
+        seconds: 10
+      when: docker_check.rc != 0 and not docker_install.failed | default(false)
 
     - name: Ensure docker group exists
       ansible.builtin.group:
@@ -90,13 +142,32 @@
         state: present
       when: docker_check.rc != 0
 
-    # --- Re-check Docker installation ---
+    # --- Re-check Docker installation with retries ---
     - name: Re-check for Docker installation
       ansible.builtin.command: command -v docker
+      environment:
+        PATH: "{{ default_path }}"
       register: docker_recheck
+      retries: 3
+      delay: 5
+      until: docker_recheck.rc == 0
       changed_when: false
       failed_when: false
 
+    - name: Check Docker version for additional validation
+      ansible.builtin.command: docker --version
+      environment:
+        PATH: "{{ default_path }}"
+      register: docker_version
+      changed_when: false
+      failed_when: false
+      when: docker_recheck.rc == 0
+
     - name: Display final Docker installation status
       ansible.builtin.debug:
-        msg: "{{ 'Docker is now installed at ' + docker_recheck.stdout if docker_recheck.rc == 0 else 'Docker installation failed' }}"
+        msg: >-
+          {{
+            'Docker is now installed at ' + docker_recheck.stdout +
+            ' (Version: ' + docker_version.stdout + ')' if docker_recheck.rc == 0
+            else 'Docker installation failed'
+          }}
