@@ -1,5 +1,5 @@
 ---
-- name: Create multiple users from CSV, add to docker group if exists, and force password change
+- name: Create multiple users from CSV, add to groups, and force password change
   hosts: lu_1
   become: yes
   become_method: sudo
@@ -9,6 +9,7 @@
   vars:
     csv_path: "./newusers.csv"
     student_group: "students"
+    teach_group: "developers"
 
   pre_tasks:
     - name: Check the CSV exists on the control node
@@ -35,15 +36,20 @@
   tasks:
     - name: Check sudo access
       command: whoami
-      register: whoami_result
+      register: whoami_resultD@Mp132^1
 
     - name: Display current user
       debug:
         var: whoami_result.stdout
 
-    - name: Ensure student admin group exists (create if missing)
+    - name: Ensure student group exists (create if missing)
       group:
         name: "{{ student_group }}"
+        state: present
+
+    - name: Ensure developer group exists (create if missing)
+      group:
+        name: "{{ teach_group }}"
         state: present
 
     - name: Check if docker group exists
@@ -60,7 +66,7 @@
     - name: Create each user with full name, password as username, and add to groups
       vars:
         u: "{{ item }}"
-        user_groups: "{{ [student_group] + (['docker'] if docker_group_exists else []) }}"
+        user_groups: "{{ [student_group, teach_group] + (['docker'] if docker_group_exists else []) }}"
       loop: "{{ users_csv.list }}"
       loop_control:
         label: "{{ u.Username }}"
