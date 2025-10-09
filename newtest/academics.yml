@@ -32,15 +32,19 @@
         path: "{{ csv_path | expanduser }}"
       register: users_csv
 
-    - name: Check for duplicate usernames
+    - name: Check for duplicate or empty usernames
       delegate_to: localhost
       run_once: true
       fail:
-        msg: "Duplicate usernames found: {{ duplicates }}"
+        msg: "Invalid usernames found: {{ invalid_usernames }}"
       vars:
         usernames: "{{ users_csv.list | map(attribute='Username') | list }}"
-        duplicates: "{{ usernames | unique | select('equalto', '') | list + (usernames | reject('equalto', '') | list | duplicates) }}"
-      when: duplicates | length > 0
+        empty_usernames: "{{ usernames | select('equalto', '') | list }}"
+        unique_usernames: "{{ usernames | reject('equalto', '') | unique | list }}"
+        has_duplicates: "{{ usernames | reject('equalto', '') | length > unique_usernames | length }}"
+        duplicate_usernames: "{{ usernames | reject('equalto', '') | list | reject('in', unique_usernames) | list }}"
+        invalid_usernames: "{{ empty_usernames + (duplicate_usernames if has_duplicates else []) }}"
+      when: invalid_usernames | length > 0
 
   tasks:
     - name: Check sudo access
