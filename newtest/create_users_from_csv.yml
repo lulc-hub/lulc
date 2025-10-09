@@ -1,5 +1,5 @@
 ---
-- name: Create multiple users from CSV and copy known_hosts
+- name: Create multiple users from CSV, add to docker group if exists, and copy known_hosts
   hosts: test
   become: yes
   become_method: sudo
@@ -71,16 +71,28 @@
         name: "{{ student_group }}"
         state: present
 
-    - name: Create each user with full name, password as username, and force password change
+    - name: Check if docker group exists
+      group:
+        name: docker
+        state: present
+      register: docker_group_check
+      ignore_errors: true
+
+    - name: Set fact for docker group existence
+      set_fact:
+        docker_group_exists: "{{ docker_group_check.state is defined and docker_group_check.state == 'present' }}"
+
+    - name: Create each user with full name, password as username, and add to groups
       vars:
         u: "{{ item }}"
+        user_groups: "{{ [student_group] + (['docker'] if docker_group_exists else []) }}"
       loop: "{{ users_csv.list }}"
       loop_control:
         label: "{{ u.Username }}"
       user:
         name: "{{ u.Username }}"
         comment: "{{ u.FirstName }} {{ u.LastName }}"
-        groups: "{{ student_group }}"
+        groups: "{{ user_groups | join(',') }}"
         shell: /bin/bash 
         append: true
         create_home: true
