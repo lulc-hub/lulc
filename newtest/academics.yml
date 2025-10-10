@@ -123,7 +123,7 @@
     - name: Verify sudo privileges for admins group
       command: "sudo -l -U {{ (users_csv.list | first).Username }}"
       register: sudo_check
-      failed_when: sudo_check.rc != 0 or '(ALL : ALL) ALL' not in sudo_check.stdout
+      failed_when: sudo_check.rc != 0 or "(ALL : ALL) ALL" not in sudo_check.stdout
       when:
         - users_csv.list | length > 0
         - (users_csv.list | first).Username is defined
