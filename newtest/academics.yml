@@ -1,6 +1,6 @@
 ---
 - name: Create users from a CSV file, add to admins group with sudo privileges, and force password change
-  hosts: lu_1
+  hosts: lab_all
   become: yes
   become_method: sudo
   become_user: root
