@@ -4,7 +4,7 @@
   become: yes
   become_method: sudo
   become_user: root
-  gather_facts: false
+  gather_facts: true
 
   vars:
     csv_path: "./aca.csv"
@@ -60,6 +60,14 @@
         name: "{{ admin_group }}"
         state: present
 
+    - name: Ensure /etc/sudoers includes /etc/sudoers.d
+      lineinfile:
+        path: /etc/sudoers
+        line: "#includedir /etc/sudoers.d"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+      when: ansible_facts['os_family'] is defined and ansible_facts['os_family'] in ['Debian', 'RedHat']
+
     - name: Grant sudo privileges to admins group
       copy:
         content: "%{{ admin_group }} ALL=(ALL:ALL) ALL\n"
@@ -111,3 +119,23 @@
       when:
         - u.Username is defined
         - u.Username | length > 0
+
+    - name: Verify sudo privileges for admins group
+      command: "sudo -l -U {{ (users_csv.list | first).Username }}"
+      register: sudo_check
+      failed_when: sudo_check.rc != 0 or 'ALL=(ALL:ALL) ALL' not in sudo_check.stdout
+      when:
+        - users_csv.list | length > 0
+        - (users_csv.list | first).Username is defined
+        - (users_csv.list | first).Username | length > 0
+      run_once: true
+      changed_when: false
+
+    - name: Display sudo verification result
+      debug:
+        msg: "Sudo privileges confirmed for admins group (checked for user {{ (users_csv.list | first).Username }})"
+      when:
+        - users_csv.list | length > 0
+        - (users_csv.list | first).Username is defined
+        - (users_csv.list | first).Username | length > 0
+      run_once: true
