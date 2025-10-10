@@ -123,13 +123,22 @@
     - name: Verify sudo privileges for admins group
       command: "sudo -l -U {{ (users_csv.list | first).Username }}"
       register: sudo_check
-      failed_when: sudo_check.rc != 0 or 'ALL=(ALL:ALL) ALL' not in sudo_check.stdout
+      failed_when: sudo_check.rc != 0 or '(ALL : ALL) ALL' not in sudo_check.stdout
       when:
         - users_csv.list | length > 0
         - (users_csv.list | first).Username is defined
         - (users_csv.list | first).Username | length > 0
       run_once: true
       changed_when: false
+
+    - name: Display sudo -l output for debugging
+      debug:
+        msg: "sudo -l output for {{ (users_csv.list | first).Username }}: {{ sudo_check.stdout_lines }}"
+      when:
+        - users_csv.list | length > 0
+        - (users_csv.list | first).Username is defined
+        - (users_csv.list | first).Username | length > 0
+      run_once: true
 
     - name: Display sudo verification result
       debug:
