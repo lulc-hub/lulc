@@ -7,9 +7,9 @@
   gather_facts: false
 
   vars:
-    csv_path: "./newuser_LZSCC111&131.csv"
+    csv_path: "./newuser_LZSCC321.csv"
     student_group: "students"
-    teach_group: "LZSCC_111_&_131"
+    teach_group: "LZSCC_321"
 
   pre_tasks:
     - name: Check the CSV exists on the control node
