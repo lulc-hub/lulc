@@ -1,16 +1,14 @@
 ---
 - name: Add users from CSV to multiple groups, create users and groups if missing
-  hosts: all
+  hosts: lab_all
   become: yes
   become_method: sudo
   become_user: root
   gather_facts: false
 
   vars:
-    csv_path: "./newusers.csv"
+    csv_path: "./newuser_labdemo.csv"
     groups:
-      - LZSCC_221
-      - LZSCC_321
       - LZSCC_323
 
   pre_tasks:
