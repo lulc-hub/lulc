@@ -8,7 +8,7 @@
 
   vars:
     csv_path: "./newuser_labdemo.csv"
-    student_group: "students"
+    student_group: "LZSCC_321"
     teach_group: "LZSCC_221"
 
   pre_tasks:
