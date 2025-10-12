@@ -35,14 +35,15 @@
         msg: "{{ user_update.results | select('failed') | map(attribute='msg') | list }}"
       when: user_update.results is defined and user_update.results | select('failed') | list | length > 0
 
-    - name: Refresh group membership
-      ansible.builtin.command: newgrp LZSCC_323
-      become: yes
-      become_user: "{{ item }}"
+    - name: Verify users are in LZ_323 group
+      ansible.builtin.command: "getent group LZ_323"
+      register: group_check
+      failed_when: "item not in group_check.stdout"
       changed_when: false
-      failed_when: false
-      loop: "{{ LZSCC_323_users }}"
-      when: user_update.results is defined and not user_update.results | select('failed') | list | length > 0
+      loop: "{{ LZ_users }}"
+      loop_control:
+        label: "{{ item }}"
+      when: user_update.results is defined and user_update.results | select('failed') | list | length == 0
 
     - name: Validate LZSCC_323 group membership
       ansible.builtin.command: groups {{ item }}
