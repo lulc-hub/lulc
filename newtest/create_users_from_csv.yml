@@ -1,5 +1,5 @@
 ---
-- name: Create multiple users from CSV, add to groups, and force password change
+- name: Add users from CSV to multiple groups, create users and groups if missing
   hosts: lab_all
   become: yes
   become_method: sudo
@@ -7,9 +7,8 @@
   gather_facts: false
 
   vars:
-    csv_path: "./newuser_labdemo.csv"
-    student_group: "LZSCC_321"
-    teach_group: "LZSCC_221"
+    csv_path: "./newusers.csv"
+    groups: "LZSCC_323"
 
   pre_tasks:
     - name: Check the CSV exists on the control node
@@ -33,63 +32,57 @@
         path: "{{ csv_path | expanduser }}"
       register: users_csv
 
-  tasks:
-    - name: Check sudo access
-      command: whoami
-      register: whoami_result
-
-    - name: Display current user
-      debug:
-        var: whoami_result.stdout
-
-    - name: Ensure student group exists (create if missing)
-      group:
-        name: "{{ student_group }}"
-        state: present
-
-    - name: Ensure Teaching group exists (create if missing)
-      group:
-        name: "{{ teach_group }}"
-        state: present
-
-    - name: Check if docker group exists
-      group:
-        name: docker
-        state: present
-      register: docker_group_check
-      ignore_errors: true
-
-    - name: Set fact for docker group existence
-      set_fact:
-        docker_group_exists: "{{ docker_group_check.state is defined and docker_group_check.state == 'present' }}"
-
-    - name: Create each user with full name, password as username, and add to groups
+    - name: Check for duplicate or empty usernames
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: "Invalid usernames found: {{ invalid_usernames }}"
       vars:
-        u: "{{ item }}"
-        user_groups: "{{ [student_group, teach_group] + (['docker'] if docker_group_exists else []) }}"
+        usernames: "{{ users_csv.list | map(attribute='Username') | list }}"
+        empty_usernames: "{{ usernames | select('equalto', '') | list }}"
+        unique_usernames: "{{ usernames | reject('equalto', '') | unique | list }}"
+        has_duplicates: "{{ usernames | reject('equalto', '') | length > unique_usernames | length }}"
+        duplicate_usernames: "{{ usernames | reject('equalto', '') | list | reject('in', unique_usernames) | list }}"
+        invalid_usernames: "{{ empty_usernames + (duplicate_usernames if has_duplicates else []) }}"
+      when: invalid_usernames | length > 0
+
+  tasks:
+    - name: Ensure specified groups exist
+      group:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ groups }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Check if users exist
+      command: "getent passwd {{ item.Username }}"
       loop: "{{ users_csv.list }}"
+      loop_control:
+        label: "{{ item.Username }}"
+      register: user_check
+      failed_when: false
+      changed_when: false
+      when:
+        - item.Username is defined
+        - item.Username | length > 0
+
+    - name: Create or update users and add to groups
+      vars:
+        u: "{{ item.0 }}"
+        user_exists: "{{ (item.1.rc == 0) }}"
+      loop: "{{ users_csv.list | zip(user_check.results) | list }}"
       loop_control:
         label: "{{ u.Username }}"
       user:
         name: "{{ u.Username }}"
         comment: "{{ u.FirstName }} {{ u.LastName }}"
-        groups: "{{ user_groups | join(',') }}"
-        shell: /bin/bash 
+        groups: "{{ groups | join(',') }}"
+        shell: /bin/bash
         append: true
         create_home: true
         state: present
         password: "{{ u.Username | password_hash('sha512') }}"
-      when:
-        - u.Username is defined
-        - u.Username | length > 0
-
-    - name: Force password change on first login
-      vars:
-        u: "{{ item }}"
-      loop: "{{ users_csv.list }}"
-      loop_control:
-        label: "{{ u.Username }}"
-      command: chage -d 0 {{ u.Username }}
       when:
         - u.Username is defined
         - u.Username | length > 0
