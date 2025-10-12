@@ -36,11 +36,11 @@
       when: user_update.results is defined and user_update.results | select('failed') | list | length > 0
 
     - name: Verify users are in LZ_323 group
-      ansible.builtin.command: "getent group LZ_323"
+      ansible.builtin.command: "getent group LZSCC_323"
       register: group_check
       failed_when: "item not in group_check.stdout"
       changed_when: false
-      loop: "{{ LZ_users }}"
+      loop: "{{ LZSCC_323_users }}"
       loop_control:
         label: "{{ item }}"
       when: user_update.results is defined and user_update.results | select('failed') | list | length == 0
