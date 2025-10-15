@@ -1,5 +1,5 @@
 ---
-- name: Ensure users are in specified groups from CSV
+- name: Manage user group membership from CSV
   hosts: lab_all
   become: yes
   become_method: sudo
@@ -7,51 +7,95 @@
   gather_facts: no
 
   vars:
-    csv_file: alllabusers.csv
+    csv_file: "{{ '~' | expanduser }}/alllabusers.csv"  # Adjust path as needed
+
+  pre_tasks:
+    - name: Check if CSV file exists on control node
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.stat:
+        path: "{{ csv_file }}"
+      register: csv_stat
+
+    - name: Fail if CSV file is missing
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.fail:
+        msg: "CSV file not found at {{ csv_file }}"
+      when: not csv_stat.stat.exists
+
+    - name: Read user data from CSV
+      delegate_to: localhost
+      run_once: true
+      community.general.read_csv:
+        path: "{{ csv_file }}"
+        delimiter: ","
+      register: csv_data
+
+    - name: Set userlist fact
+      ansible.builtin.set_fact:
+        userlist: "{{ csv_data.list }}"
+
+    - name: Validate CSV data
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.fail:
+        msg: "Invalid CSV data: Username or Groups column missing or empty for some entries"
+      when: >
+        userlist | select('undefined', 'Username') | length > 0 or
+        userlist | select('undefined', 'Groups') | length > 0 or
+        userlist | select('eq', '', 'Username') | length > 0
 
   tasks:
-    - name: Read user data from CSV
-      set_fact:
-        userlist: "{{ lookup('community.general.csvfile', csv_file, delimiter=',') }}"
-
-    - name: Ensure user is present
+    - name: Ensure users exist
       ansible.builtin.user:
-        name: "{{ item['Username'] }}"
+        name: "{{ item.Username }}"
         state: present
+        create_home: yes
+        shell: /bin/bash
       loop: "{{ userlist }}"
       loop_control:
-        label: "{{ item['Username'] }}"
+        label: "{{ item.Username }}"
 
-    - name: Ensure group exists
+    - name: Ensure groups exist
       ansible.builtin.group:
-        name: "{{ item['Groups'] }}"
+        name: "{{ group_name }}"
         state: present
-      loop: "{{ userlist }}"
+      loop: "{{ userlist | subelements('Groups.split(\",\")', skip_missing=True) }}"
       loop_control:
-        label: "{{ item['Groups'] }}"
+        label: "{{ group_name }}"
+        loop_var: group_name
+      vars:
+        group_name: "{{ group_name[1] | trim }}"
 
-    - name: Get user's current groups
-      shell: id -nG "{{ item['Username'] }}"
+    - name: Check user group membership
+      ansible.builtin.shell: id -nG "{{ item.Username }}"
       register: current_groups
       changed_when: false
+      failed_when: false
       loop: "{{ userlist }}"
       loop_control:
-        label: "{{ item['Username'] }}"
+        label: "{{ item.Username }}"
 
-    - name: Add user to group if not present
+    - name: Add user to groups if not present
       ansible.builtin.user:
-        name: "{{ item['Username'] }}"
-        groups: "{{ item['Groups'] }}"
+        name: "{{ item.Username }}"
+        groups: "{{ item.Groups.split(',') | map('trim') | list | join(',') }}"
         append: yes
-      when: item['Groups'] not in current_groups.results[loop.index0].stdout.split()
+      when: >
+        current_groups.rc == 0 and
+        item.Groups | length > 0 and
+        (item.Groups.split(',') | map('trim') | list | difference(current_groups.stdout.split())) | length > 0
       loop: "{{ userlist }}"
       loop_control:
-        label: "{{ item['Username'] }}"
+        label: "{{ item.Username }}"
 
-    - name: Display already exists if user in group
-      debug:
-        msg: "User {{ item['Username'] }} already exists in group {{ item['Groups'] }}"
-      when: item['Groups'] in current_groups.results[loop.index0].stdout.split()
-      loop: "{{ userlist }}"
+    - name: Display already exists message
+      ansible.builtin.debug:
+        msg: "User {{ item[0].Username }} already exists in group {{ item[1] }}"
+      loop: "{{ userlist | subelements('Groups.split(\",\")', skip_missing=True) }}"
       loop_control:
-        label: "{{ item['Username'] }}"
+        label: "{{ item[0].Username }}:{{ item[1] }}"
+      when: >
+        current_groups.rc == 0 and
+        item[1] | trim in current_groups.stdout.split()
