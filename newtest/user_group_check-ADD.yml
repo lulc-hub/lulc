@@ -42,8 +42,8 @@
       ansible.builtin.fail:
         msg: "Invalid CSV data: Username or Groups column missing or empty for some entries"
       when: >
-        userlist | map(attribute='Username', default='_undefined_', strict=True) | select('eq', '_undefined_') | list | length > 0 or
-        userlist | map(attribute='Groups', default='_undefined_', strict=True) | select('eq', '_undefined_') | list | length > 0 or
+        userlist | map(attribute='Username', default='_undefined_') | select('eq', '_undefined_') | list | length > 0 or
+        userlist | map(attribute='Groups', default='_undefined_') | select('eq', '_undefined_') | list | length > 0 or
         userlist | map(attribute='Username') | select('eq', '') | list | length > 0
 
   tasks:
