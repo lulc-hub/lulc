@@ -1,0 +1,52 @@
+---
+- name: Manage user group membership from CSV
+  hosts: lab_all
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: no
+
+  vars:
+    csv_file: alllabusers.csv
+
+  tasks:
+    - name: Read user data from CSV
+      set_fact:
+        userlist: "{{ lookup('community.general.csvfile', csv_file, delimiter=',') }}"
+
+    - name: Ensure users are in specified groups
+      block:
+        - name: Check if user exists
+          ansible.builtin.user:
+            name: "{{ item['Username'] }}"
+            state: present
+          check_mode: yes
+          register: user_check
+          failed_when: false
+
+        - name: Check if group exists
+          ansible.builtin.group:
+            name: "{{ item['Groups'] }}"
+            state: present
+          check_mode: yes
+          register: group_check
+          failed_when: false
+
+        - name: Check user group membership
+          shell: id -nG "{{ item['Username'] }}"
+          register: current_groups
+          changed_when: false
+
+        - name: Add user to group if not present
+          ansible.builtin.user:
+            name: "{{ item['Username'] }}"
+            groups: "{{ item['Groups'] }}"
+            append: yes
+          when: item['Groups'] not in current_groups.stdout.split()
+          register: user_added
+
+        - name: Display already exists if user in group
+          debug:
+            msg: "User {{ item['Username'] }} already exists in group {{ item['Groups'] }}"
+          when: item['Groups'] in current_groups.stdout.split()
+      loop: "{{ userlist }}"
