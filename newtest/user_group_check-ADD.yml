@@ -1,5 +1,5 @@
 ---
-- name: Manage user group membership from CSV
+- name: Ensure users are in specified groups from CSV
   hosts: lab_all
   become: yes
   become_method: sudo
@@ -7,15 +7,14 @@
   gather_facts: no
 
   vars:
-    csv_file: "./alllabusers.csv"
+    csv_file: users.csv
 
   tasks:
     - name: Read user data from CSV
       set_fact:
         userlist: "{{ lookup('community.general.csvfile', csv_file, delimiter=',') }}"
 
-    - name: Ensure users are in specified groups
-      block:
+    - block:
         - name: Check if user exists
           ansible.builtin.user:
             name: "{{ item['Username'] }}"
@@ -50,3 +49,5 @@
             msg: "User {{ item['Username'] }} already exists in group {{ item['Groups'] }}"
           when: item['Groups'] in current_groups.stdout.split()
       loop: "{{ userlist }}"
+      loop_control:
+        label: "{{ item['Username'] }}"
