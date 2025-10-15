@@ -7,7 +7,7 @@
   gather_facts: no
 
   vars:
-    csv_file: "{{ '~' | expanduser }}/alllabusers.csv"  # Adjust path as needed
+    csv_file: "./alllabusers.csv"  # Adjust path as needed
 
   pre_tasks:
     - name: Check if CSV file exists on control node
