@@ -8,7 +8,10 @@
 
   vars:
     csv_path: "./newusers.csv"
-    groups: "LZSCC_111_&_131"
+    additional_groups:
+      - "LZSCC_111_&_131"
+      - "students"
+      - "docker"    
 
   pre_tasks:
     - name: Check the CSV exists on the control node
@@ -51,7 +54,7 @@
       group:
         name: "{{ item }}"
         state: present
-      loop: "{{ groups }}"
+      loop: "{{ additional_groups }}"
       loop_control:
         label: "{{ item }}"
 
@@ -77,7 +80,7 @@
       user:
         name: "{{ u.Username }}"
         comment: "{{ u.FirstName }} {{ u.LastName }}"
-        groups: "{{ groups | join(',') }}"
+        groups: "{{ additional_groups | join(',') }}"
         shell: /bin/bash
         append: true
         create_home: true
