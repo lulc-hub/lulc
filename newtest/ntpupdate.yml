@@ -1,0 +1,27 @@
+---
+- name: Install ntpdate and run ntpdate command
+  hosts: lu_1
+  become: yes
+  tasks:
+    - name: Install ntpdate package
+      package:
+        name: ntpdate
+        state: present
+
+    - name: Check if ntpdate is installed
+      command: which ntpdate
+      register: ntpdate_installed
+      changed_when: false
+
+    - name: Display ntpdate installation check result
+      debug:
+        msg: "ntpdate is installed at {{ ntpdate_installed.stdout }}"
+
+    - name: Run ntpdate against de.pool.ntp.org and show output
+      command: ntpdate de.pool.ntp.org
+      register: ntpdate_output
+      changed_when: false
+
+    - name: Display ntpdate command output
+      debug:
+        var: ntpdate_output.stdout
