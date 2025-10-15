@@ -1,6 +1,6 @@
 ---
 - name: Configure NTP servers for systemd-timesyncd
-  hosts: all
+  hosts: lab_all
   become: yes
     become_method: sudo
   become_user: root
