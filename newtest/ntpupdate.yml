@@ -1,30 +1,24 @@
 ---
-- name: Install ntpdate and run ntpdate command
-  hosts: lu_1
+- name: Configure NTP servers for systemd-timesyncd
+  hosts: all
   become: yes
-  become_method: sudo
+    become_method: sudo
   become_user: root
-  
+
   tasks:
-    - name: Install ntpdate package
-      package:
-        name: ntpdate
+    - name: Ensure desired NTP servers are set in timesyncd.conf
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/timesyncd.conf
+        regexp: '^#?NTP='
+        line: 'NTP=0.de.pool.ntp.org 1.de.pool.ntp.org 2.de.pool.ntp.org 3.de.pool.ntp.org'
+        insertafter: '^\[Time\]'
         state: present
+        backup: yes
 
-    - name: Check if ntpdate is installed
-      command: which ntpdate
-      register: ntpdate_installed
-      changed_when: false
+    - name: Reload systemd manager configuration
+      ansible.builtin.shell: systemctl daemon-reload
 
-    - name: Display ntpdate installation check result
-      debug:
-        msg: "ntpdate is installed at {{ ntpdate_installed.stdout }}"
-
-    - name: Run ntpdate against de.pool.ntp.org and show output
-      command: ntpdate de.pool.ntp.org
-      register: ntpdate_output
-      changed_when: false
-
-    - name: Display ntpdate command output
-      debug:
-        var: ntpdate_output.stdout
+    - name: Restart systemd-timesyncd service
+      ansible.builtin.service:
+        name: systemd-timesyncd
+        state: restarted
