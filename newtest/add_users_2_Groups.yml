@@ -7,9 +7,10 @@
   gather_facts: false
 
   vars:
-    csv_path: "./newuser_labdemo.csv"
+    csv_path: "./all_labusers.csv"
     groups:
-      - LZSCC_323
+      - docker
+      - students
 
   pre_tasks:
     - name: Check the CSV exists on the control node
