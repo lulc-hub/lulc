@@ -14,7 +14,8 @@
       set_fact:
         userlist: "{{ lookup('community.general.csvfile', csv_file, delimiter=',') }}"
 
-    - block:
+    - name: Process user/group membership
+      block:
         - name: Check if user exists
           ansible.builtin.user:
             name: "{{ item['Username'] }}"
