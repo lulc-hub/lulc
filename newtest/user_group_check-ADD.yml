@@ -1,5 +1,5 @@
 ---
-- name: Ensure users are in specified groups from CSV
+- name: Manage user group membership from CSV
   hosts: lab_all
   become: yes
   become_method: sudo
@@ -7,48 +7,105 @@
   gather_facts: no
 
   vars:
-    csv_file: users.csv
+    csv_file: "{{ '~' | expanduser }}/alllabusers.csv"  # Adjust path as needed
+
+  pre_tasks:
+    - name: Check if CSV file exists on control node
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.stat:
+        path: "{{ csv_file }}"
+      register: csv_stat
+
+    - name: Fail if CSV file is missing
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.fail:
+        msg: "CSV file not found at {{ csv_file }}"
+      when: not csv_stat.stat.exists
+
+    - name: Read user data from CSV
+      delegate_to: localhost
+      run_once: true
+      community.general.read_csv:
+        path: "{{ csv_file }}"
+        delimiter: ","
+      register: csv_data
+
+    - name: Set userlist fact
+      ansible.builtin.set_fact:
+        userlist: "{{ csv_data.list }}"
+
+    - name: Validate CSV data
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.fail:
+        msg: "Invalid CSV data: Username or Groups column missing or empty for some entries"
+      when: >
+        userlist | select('undefined', 'Username') | length > 0 or
+        userlist | select('undefined', 'Groups') | length > 0 or
+        userlist | select('eq', '', 'Username') | length > 0
 
   tasks:
-    - name: Read user data from CSV
-      set_fact:
-        userlist: "{{ lookup('community.general.csvfile', csv_file, delimiter=',') }}"
-
-    - name: Process user/group membership
+    - name: Ensure users and groups exist and manage membership
       block:
-        - name: Check if user exists
+        - name: Ensure user exists
           ansible.builtin.user:
-            name: "{{ item['Username'] }}"
+            name: "{{ item.Username }}"
             state: present
-          check_mode: yes
-          register: user_check
-          failed_when: false
+            create_home: yes
+            shell: /bin/bash
+          loop: "{{ userlist }}"
+          loop_control:
+            label: "{{ item.Username }}"
 
-        - name: Check if group exists
+        - name: Ensure groups exist
           ansible.builtin.group:
-            name: "{{ item['Groups'] }}"
+            name: "{{ group_name }}"
             state: present
-          check_mode: yes
-          register: group_check
-          failed_when: false
+          loop: "{{ item.Groups.split(',') | map('trim') | list }}"
+          loop_control:
+            label: "{{ group_name }}"
+            loop_var: group_name
+          vars:
+            group_name: "{{ group_name }}"
+          loop_control:
+            label: "{{ group_name }}"
+          when: item.Groups | length > 0
 
         - name: Check user group membership
-          shell: id -nG "{{ item['Username'] }}"
+          ansible.builtin.shell: id -nG "{{ item.Username }}"
           register: current_groups
           changed_when: false
+          failed_when: false
+          loop: "{{ userlist }}"
+          loop_control:
+            label: "{{ item.Username }}"
 
-        - name: Add user to group if not present
+        - name: Add user to groups if not present
           ansible.builtin.user:
-            name: "{{ item['Username'] }}"
-            groups: "{{ item['Groups'] }}"
+            name: "{{ item.Username }}"
+            groups: "{{ item.Groups.split(',') | map('trim') | list | join(',') }}"
             append: yes
-          when: item['Groups'] not in current_groups.stdout.split()
-          register: user_added
+          when: >
+            current_groups.rc == 0 and
+            item.Groups | length > 0 and
+            (item.Groups.split(',') | map('trim') | list | difference(current_groups.stdout.split())) | length > 0
+          loop: "{{ userlist }}"
+          loop_control:
+            label: "{{ item.Username }}"
 
-        - name: Display already exists if user in group
-          debug:
-            msg: "User {{ item['Username'] }} already exists in group {{ item['Groups'] }}"
-          when: item['Groups'] in current_groups.stdout.split()
+        - name: Display already exists message
+          ansible.builtin.debug:
+            msg: "User {{ item.Username }} already exists in group {{ group_name }}"
+          loop: "{{ item.Groups.split(',') | map('trim') | list }}"
+          loop_control:
+            label: "{{ group_name }}"
+            loop_var: group_name
+          when: >
+            current_groups.rc == 0 and
+            item.Groups | length > 0 and
+            group_name in current_groups.stdout.split()
       loop: "{{ userlist }}"
       loop_control:
-        label: "{{ item['Username'] }}"
+        label: "{{ item.Username }}"
