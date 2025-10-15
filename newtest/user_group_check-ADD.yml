@@ -7,7 +7,7 @@
   gather_facts: no
 
   vars:
-    csv_file: "./alllabusers.csv"
+    csv_file: alllabusers.csv
 
   tasks:
     - name: Read user data from CSV
