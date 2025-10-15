@@ -8,7 +8,10 @@
 
   vars:
     csv_path: "./newusers.csv"
-    groups: "LZSCC_111_&_131"
+    groups: 
+      - "LZSCC_111_&_131"
+      - "students"
+      - "docker"
 
   pre_tasks:
     - name: Check the CSV exists on the control node
