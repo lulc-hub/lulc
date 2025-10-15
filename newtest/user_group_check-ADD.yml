@@ -7,10 +7,10 @@
   gather_facts: no
 
   vars:
-    csv_file: "./alllabusers.csv"  # Adjust path as needed
+    csv_file: "{{ playbook_dir }}/alllabusers.csv"  # CSV in same dir as playbook
 
   pre_tasks:
-    - name: Check if CSV file exists on control node
+    - name: Check if CSV file exists
       delegate_to: localhost
       run_once: true
       ansible.builtin.stat:
@@ -42,9 +42,9 @@
       ansible.builtin.fail:
         msg: "Invalid CSV data: Username or Groups column missing or empty for some entries"
       when: >
-        userlist | select('undefined', 'Username') | length > 0 or
-        userlist | select('undefined', 'Groups') | length > 0 or
-        userlist | select('eq', '', 'Username') | length > 0
+        userlist | map(attribute='Username', default='_undefined_', strict=True) | select('eq', '_undefined_') | list | length > 0 or
+        userlist | map(attribute='Groups', default='_undefined_', strict=True) | select('eq', '_undefined_') | list | length > 0 or
+        userlist | map(attribute='Username') | select('eq', '') | list | length > 0
 
   tasks:
     - name: Ensure users exist
