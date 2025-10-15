@@ -7,7 +7,7 @@
   gather_facts: no
 
   vars:
-    csv_file: users.csv
+    csv_file: "./users.csv"
 
   tasks:
     - name: Read user data from CSV
